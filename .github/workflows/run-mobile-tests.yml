@@ -48,7 +48,7 @@ jobs:
           $matrix = @{ device = @($filtered) } | ConvertTo-Json -Compress -Depth 5
           echo "matrix=$matrix" >> $env:GITHUB_OUTPUT
 
-          $filtered | ForEach-Object { Write-Host "  ✓ $($_.name) [$($_.udid)] Android $($_.version)" }
+          $filtered | ForEach-Object { Write-Host "  OK: $($_.name) [$($_.udid)] Android $($_.version)" }
 
   # ── Job 2: Run tests in parallel across selected devices ─────
   test:
