@@ -1,4 +1,4 @@
-name: Run Mobile Tests (Multi Device Sequential)
+name: Run Mobile Tests (Multi-Device JSON)
 
 on:
   workflow_dispatch:
@@ -8,47 +8,102 @@ on:
         required: true
         default: 'testng-bdd-appium.xml'
 
+      devices:
+        description: 'Devices JSON (UDID, deviceName, platformVersion)'
+        required: true
+        default: |
+          [
+            {
+              "udid": "a443a697",
+              "deviceName": "Redmi Note 10 Pro",
+              "platformVersion": "13"
+            },
+            {
+              "udid": "emulator-5554",
+              "deviceName": "Pixel Emulator",
+              "platformVersion": "33"
+            }
+          ]
+
 jobs:
   test:
     runs-on: self-hosted
 
     steps:
+      # =========================
+      # 1. Checkout PUBLIC repo
+      # =========================
       - name: Checkout Public Repo
         uses: actions/checkout@v4
 
-      - name: Checkout Private Repo
+      # =========================
+      # 2. Checkout PRIVATE repo (framework)
+      # =========================
+      - name: Checkout Private Core Repo
         uses: actions/checkout@v4
         with:
           repository: anilds47/qa-core-framework
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           path: core-framework
 
-      - name: Build Framework
+      # =========================
+      # 3. Build Core Framework
+      # =========================
+      - name: Build Core Framework
         run: |
           cd core-framework
           mvn clean install -DskipTests
 
-      - name: Run Tests on Multiple Devices Sequentially
-        shell: bash
+      # =========================
+      # 4. Verify Device Connection
+      # =========================
+      - name: Check Connected Devices
+        run: adb devices
+
+      # =========================
+      # 5. Debug Inputs
+      # =========================
+      - name: Debug Inputs
         run: |
-          devices=(
-            "a443a697|Redmi Note 10 Pro|13"
-            "b1234567|Samsung S21|13"
-            "emulator-5554|Pixel Emulator|14"
-          )
+          echo "TestNG XML: ${{ github.event.inputs.testng_xml }}"
+          echo "Devices JSON: ${{ github.event.inputs.devices }}"
 
-          for device in "${devices[@]}"
-          do
-            IFS="|" read udid name version <<< "$device"
+      # =========================
+      # 6. Install jq (for JSON parsing)
+      # =========================
+      - name: Install jq (if not present)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-            echo "======================================"
-            echo "Running tests on: $name"
+      # =========================
+      # 7. Run Tests on Multiple Devices
+      # =========================
+      - name: Execute Tests on All Devices
+        run: |
+          echo '${{ github.event.inputs.devices }}' > devices.json
+
+          for row in $(jq -c '.[]' devices.json); do
+
+            udid=$(echo $row | jq -r '.udid')
+            deviceName=$(echo $row | jq -r '.deviceName')
+            platformVersion=$(echo $row | jq -r '.platformVersion')
+
+            echo "========================================"
+            echo "Running on Device: $deviceName"
             echo "UDID: $udid"
-            echo "Version: $version"
-            echo "======================================"
+            echo "Android Version: $platformVersion"
+            echo "========================================"
+            mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ github.event.inputs.testng_xml }} -Dudid=$udid -DdeviceName="$deviceName" -DplatformVersion=$platformVersion
 
-            adb devices
-            mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} -Dudid=$udid -DdeviceName="$name" -DplatformVersion=$version
-    
-            echo "Completed execution on $name"
           done
+
+      # =========================
+      # 8. Upload Reports
+      # =========================
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: target/
