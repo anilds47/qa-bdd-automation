@@ -61,7 +61,7 @@ jobs:
       # ✅ 5. Run Tests (Dynamic XML + Device Config)
       - name: Run Tests
         run: |
-          mvn clean test \
+          mvn clean test 
             -DsuiteXmlFile=${{ github.workspace }}/testng-bdd-appium.xml \
             -Dudid=${{ inputs.udid }} \
             -DdeviceName="${{ inputs.device_name }}" \
