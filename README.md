@@ -50,27 +50,42 @@ The MCP servers are configured in `mcp.json` located at:
 ```json
 {
     "servers": {
-        "github": {
-            "command": "docker",
-            "args": [
-                "run",
-                "-i",
-                "--rm",
-                "-e",
-                "GITHUB_PERSONAL_ACCESS_TOKEN",
-                "-e",
-                "GITHUB_API_HOST",
-                "ghcr.io/github/github-mcp-server"
-            ],
-            "env": {
-                "GITHUB_PERSONAL_ACCESS_TOKEN": "your_github_token_here",
-                "GITHUB_API_HOST": "api.github.com"
-            }
-        },
-        "selenium": {
-            "command": "npx",
-            "args": ["-y", "@angiejones/mcp-selenium@latest"]
+      "github": {
+        "command": "docker",
+        "args": [
+          "run",
+          "-i",
+          "--rm",
+          "-e",
+          "GITHUB_PERSONAL_ACCESS_TOKEN",
+          "-e",
+          "GITHUB_API_HOST",
+          "ghcr.io/github/github-mcp-server"
+        ],
+        "env": {
+          "GITHUB_PERSONAL_ACCESS_TOKEN": "github_pat_Token",
+          "GITHUB_API_HOST": "api.github.com"
         }
+      },
+
+        "selenium": {
+          "command": "npx",
+          "args": ["-y", "@angiejones/mcp-selenium@latest"]
+        },
+      "appium-mcp": {
+        "disabled": false,
+        "timeout": 60000,
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "appium-mcp@latest"
+        ],
+        "env": {
+          "ANDROID_HOME": "C:\\Users\\anild\\AppData\\Local\\Android\\Sdk"
+        }
+      }
+
+
     }
 }
 ```
@@ -120,8 +135,59 @@ mvn clean install
 ## Project Structure
 
 ```
-  **- Private Repo**
+  - Private Repo
+qa-automation-core/
+├── src/
+│   └── main/
+│       ├── java/
+│       │   └── com/
+│       │       └── utilities/
+│       │           ├── CustomWebDriverListener.java
+│       │           ├── DriverFactory.java
+│       │           ├── ExtentUtility.java
+│       │           ├── JiraUtility.java
+│       │           ├── ReusableMethods.java
+│       │           ├── ScreenshotUtil.java
+│       │           ├── MobileUtils.java        <-- Moved from Mobile Support
+│       │           └── TestBaseClass.java
+│       └── resources/
+│           └── ConfigFiles/
+│               └── config.properties (Template/Global)
+├── mcp.json (Sensitive MCP Server Config)
+├── pom.xml (Builds a JAR file)
+└── README.md
+
+   - Public Repo
+qa-bdd-tests/
+├── src/
+│   └── test/
+│       ├── java/
+│       │   └── com/
+│       │       ├── runners/
+│       │       │   └── CucumberTestRunner.java
+│       │       └── stepdefinitions/
+│       │           ├── ApiSteps.java
+│       │           ├── CucumberHooks.java
+│       │           ├── MobileSteps.java
+│       │           └── UISteps.java
+│       └── resources/
+│           └── features/
+│               ├── ApiTests.feature
+│               ├── UIDBComparisonTests.feature
+│               ├── UISearchTests.feature
+│               └── MobileTests.feature
+├── testng-bdd-web.xml
+├── pom.xml (Depends on qa-automation-core)
+└── README.md
 ```
+
+## Key Setup
+   Dependency Management: In the pom.xml of this public repo, you will add your private engine:
+    <dependency>
+            <groupId>com.qaautomation</groupId>
+            <artifactId>qa-core-framework</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
 
 ## Usage
 
@@ -309,45 +375,6 @@ Available mobile-specific steps in `MobileSteps.java`:
 - Navigation (back, refresh, URL navigation)
 - Keyboard operations (hide, show, verify state)
 - Custom wait operations
-
-### MobileUtils Class
-
-The `MobileUtils` class in `com.utilities` package provides reusable methods for mobile operations:
-
-```java
-// Launch mobile app using configuration from config.properties
-MobileUtils mobileUtils = MobileUtils.launchMobileAppFromConfig("Android", "emulator-5554");
-
-// Or launch with custom parameters
-MobileUtils mobileUtils = MobileUtils.launchMobileApp("Android", "MyDevice", "emulator-5554", "http://127.0.0.1:4723/wd/hub");
-
-// Launch mobile browser
-MobileUtils mobileUtils = MobileUtils.launchMobileBrowserFromConfig("Android", "emulator-5554");
-
-// Basic interactions
-mobileUtils.tapElement("id", "button_id");
-mobileUtils.enterText("Hello World", "xpath", "//input[@name='search']");
-
-// Gestures
-mobileUtils.scrollDown();
-mobileUtils.scrollUp();
-mobileUtils.swipeLeft();
-mobileUtils.swipeRight();
-
-// Long press with custom duration
-mobileUtils.longPressElement("accessibilityId", "menu_item", 3000);
-
-// Element verification
-boolean isVisible = mobileUtils.isElementVisible("id", "element_id");
-String text = mobileUtils.getElementText("xpath", "//div[@class='title']");
-
-// Keyboard operations
-mobileUtils.hideKeyboard();
-boolean keyboardShown = mobileUtils.isKeyboardShown();
-
-// Custom waits
-WebElement element = mobileUtils.waitForElement("css", ".loading", 10);
-```
 
 ### Mobile Test Features
 
