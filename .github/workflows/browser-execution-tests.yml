@@ -58,31 +58,43 @@ jobs:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
-
-      # ✅ 5. Discover and Start MySQL Service
+      # ✅ 5. Discover, Initialize and Start MySQL Service
       - name: Start MySQL Service
         run: |
-          Write-Host "=== Listing all services with MySQL in name ==="
-          $mysqlService = Get-Service | Where-Object { $_.Name -like "*mysql*" -or $_.DisplayName -like "*mysql*" }
-          Write-Host "$($mysqlService | Select-Object Name, DisplayName, Status | Out-String)"
+          $mysqlBinPath = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
+          $mysqld    = "$mysqlBinPath\mysqld.exe"
+          $mysql     = "$mysqlBinPath\mysql.exe"
+          $dataDir   = "C:\MySQLData"
 
-          if ($mysqlService) {
-            $serviceName = $mysqlService[0].Name
-            Write-Host "Starting service: $serviceName"
-            Start-Service $serviceName
-            Start-Sleep -Seconds 5
-            Write-Host "Service '$serviceName' started successfully."
-          } else {
-            Write-Host "No MySQL service found. Attempting to start mysqld directly..."
-            $mysqldPath = Get-ChildItem "C:\Program Files\MySQL" -Recurse -Filter "mysqld.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($mysqldPath) {
-              Write-Host "Found mysqld at: $($mysqldPath.FullName)"
-              Start-Process -FilePath $mysqldPath.FullName -ArgumentList "--standalone" -NoNewWindow
-              Start-Sleep -Seconds 10
-            } else {
-              Write-Error "MySQL not found on this runner. Exiting."
+          Write-Host "=== Setting MYSQL_BIN env ==="
+          echo "MYSQL_BIN=$mysqlBinPath" >> $env:GITHUB_ENV
+
+          Write-Host "=== Creating data directory at $dataDir ==="
+          New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+
+          Write-Host "=== Initializing MySQL data directory ==="
+          & $mysqld --initialize-insecure --datadir="$dataDir" --console
+          Start-Sleep -Seconds 10
+
+          Write-Host "=== Starting MySQL server ==="
+          Start-Process -FilePath $mysqld -ArgumentList "--datadir=$dataDir --console" -NoNewWindow
+          Start-Sleep -Seconds 15
+
+          Write-Host "=== Pinging MySQL ==="
+          $mysqladmin = "$mysqlBinPath\mysqladmin.exe"
+          $retries = 10
+          for ($i = 1; $i -le $retries; $i++) {
+            Write-Host "Attempt $i of $retries..."
+            & $mysqladmin -u root ping 2>&1
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "MySQL is ready!"
+              break
+            }
+            if ($i -eq $retries) {
+              Write-Error "MySQL did not become ready in time."
               exit 1
             }
+            Start-Sleep -Seconds 5
           }
         shell: powershell
 
