@@ -29,7 +29,7 @@ jobs:
 
       - name: Build device matrix
         id: build-matrix
-        shell: pwsh
+        shell: powershell
         run: |
           $selection = "${{ github.event.inputs.devices }}"
           $devices = Get-Content ".github/devices.json" | ConvertFrom-Json
@@ -70,15 +70,15 @@ jobs:
           path: core-framework
 
       - name: Build core framework
-        shell: pwsh
+        shell: powershell
         run: cd core-framework; mvn clean install -DskipTests
 
       - name: Verify device connection
-        shell: pwsh
+        shell: powershell
         run: adb devices
 
       - name: Run tests — ${{ matrix.device.name }}
-        shell: pwsh
+        shell: powershell
         run: mvn clean test -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" -Dudid="${{ matrix.device.udid }}" -DdeviceName="${{ matrix.device.name }}" -DplatformVersion="${{ matrix.device.version }}"
 
       - name: Upload test reports
