@@ -117,7 +117,7 @@ The MCP servers are configured in `mcp.json` located at:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/anilds47/ui-bdd-automation-framework.git
+git clone https://github.com/anilds47/qa-bdd-automation.git
 cd ui-bdd-automation-framework
 ```
 
