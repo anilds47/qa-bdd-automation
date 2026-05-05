@@ -183,11 +183,13 @@ qa-bdd-tests/
 
 ## Key Setup
    Dependency Management: In the pom.xml of this public repo, you will add your private engine:
+   
     <dependency>
             <groupId>com.qaautomation</groupId>
             <artifactId>qa-core-framework</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
+        
 
 ## Usage
 
