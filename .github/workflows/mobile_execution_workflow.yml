@@ -52,6 +52,7 @@ jobs:
           adb devices
       - name: Debug Inputs
         run: |
+          
           echo "XML: ${{ github.event.inputs.testng_xml }}"
           echo "UDID: ${{ github.event.inputs.udid }}"
           echo "Device: ${{ github.event.inputs.device_name }}"
@@ -61,6 +62,7 @@ jobs:
       # ✅ 5. Run Tests (Dynamic XML + Device Config)
       - name: Run Tests
         run: |
+          cd core-framework
           mvn clean test 
             -DsuiteXmlFile=${{ github.workspace }}/testng-bdd-appium.xml 
             -Dudid=${{ inputs.udid }} 
