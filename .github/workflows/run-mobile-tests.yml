@@ -29,24 +29,26 @@ jobs:
 
       - name: Build device matrix
         id: build-matrix
-        shell: bash
+        shell: pwsh
         run: |
-          SELECTION="${{ github.event.inputs.devices }}"
+          $selection = "${{ github.event.inputs.devices }}"
+          $devices = Get-Content ".github/devices.json" | ConvertFrom-Json
 
-          if [ "$SELECTION" = "all" ]; then
-            MATRIX=$(jq -c '{device: .}' .github/devices.json)
-          else
-            MATRIX=$(jq -c --arg sel "$SELECTION" '{device: [.[] | select(.id == $sel)]}' .github/devices.json)
-          fi
+          if ($selection -eq "all") {
+            $filtered = $devices
+          } else {
+            $filtered = $devices | Where-Object { $_.id -eq $selection }
+          }
 
-          COUNT=$(echo "$MATRIX" | jq '.device | length')
-          if [ "$COUNT" -eq 0 ]; then
-            echo "ERROR: No device matched selection '$SELECTION'"
+          if (-not $filtered -or $filtered.Count -eq 0) {
+            Write-Error "ERROR: No device matched selection '$selection'"
             exit 1
-          fi
+          }
 
-          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
-          echo "$MATRIX" | jq '.device[] | "  ✓ \(.name) [\(.udid)] Android \(.version)"' -r
+          $matrix = @{ device = @($filtered) } | ConvertTo-Json -Compress -Depth 5
+          echo "matrix=$matrix" >> $env:GITHUB_OUTPUT
+
+          $filtered | ForEach-Object { Write-Host "  ✓ $($_.name) [$($_.udid)] Android $($_.version)" }
 
   # ── Job 2: Run tests in parallel across selected devices ─────
   test:
@@ -68,13 +70,15 @@ jobs:
           path: core-framework
 
       - name: Build core framework
-        run: cd core-framework && mvn clean install -DskipTests
+        shell: pwsh
+        run: cd core-framework; mvn clean install -DskipTests
 
       - name: Verify device connection
+        shell: pwsh
         run: adb devices
 
       - name: Run tests — ${{ matrix.device.name }}
-        shell: bash
+        shell: pwsh
         run: mvn clean test -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" -Dudid="${{ matrix.device.udid }}" -DdeviceName="${{ matrix.device.name }}" -DplatformVersion="${{ matrix.device.version }}"
 
       - name: Upload test reports
