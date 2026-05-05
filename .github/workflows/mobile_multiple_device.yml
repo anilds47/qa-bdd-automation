@@ -11,6 +11,10 @@ on:
         description: 'Devices JSON (UDID, deviceName, platformVersion)'
         required: true
         default: '[{"udid":"a443a697","deviceName":"Redmi Note 10 Pro","platformVersion":"13"},{"udid":"emulator-5554","deviceName":"Pixel Emulator","platformVersion":"33"}]'
+      device_index:
+        description: 'Device to run on (0=Redmi Note 10 Pro, 1=Pixel Emulator, -1=All devices)'
+        required: true
+        default: '-1'
 
 jobs:
   test:
@@ -48,41 +52,76 @@ jobs:
         run: adb devices
 
       # =========================
-      # 5. Debug Inputs
-      # =========================
-      - name: Debug Inputs
-        run: |
-          echo "TestNG XML: ${{ github.event.inputs.testng_xml }}"
-          echo "Devices JSON: ${{ github.event.inputs.devices }}"
-
-      # =========================
-      # 6. Install jq (for JSON parsing)
+      # 5. Install jq (for JSON parsing)
       # =========================
       - name: Install jq (if not present)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          else
+            echo "jq already installed: $(jq --version)"
+          fi
 
       # =========================
-      # 7. Run Tests on Multiple Devices
+      # 6. Debug Inputs
       # =========================
-      - name: Execute Tests on All Devices
+      - name: Debug Inputs
+        run: |
+          echo "TestNG XML   : ${{ github.event.inputs.testng_xml }}"
+          echo "Device Index : ${{ github.event.inputs.device_index }}"
+          echo "Devices JSON : ${{ github.event.inputs.devices }}"
+
+      # =========================
+      # 7. Run Tests on Selected Device(s)
+      # =========================
+      - name: Execute Tests on Selected Device(s)
         run: |
           echo '${{ github.event.inputs.devices }}' > devices.json
 
-          for row in $(jq -c '.[]' devices.json); do
+          INDEX="${{ github.event.inputs.device_index }}"
 
-            udid=$(echo $row | jq -r '.udid')
-            deviceName=$(echo $row | jq -r '.deviceName')
-            platformVersion=$(echo $row | jq -r '.platformVersion')
+          # Select one device or all devices based on index
+          if [ "$INDEX" = "-1" ]; then
+            echo "Running on ALL devices..."
+            ROWS=$(jq -c '.[]' devices.json)
+          else
+            echo "Running on device at index: $INDEX"
+            ROWS=$(jq -c ".[$INDEX]" devices.json)
+
+            # Validate that the index exists
+            if [ "$ROWS" = "null" ] || [ -z "$ROWS" ]; then
+              echo "ERROR: No device found at index $INDEX. Check your devices JSON."
+              exit 1
+            fi
+          fi
+
+          # Iterate and run tests
+          echo "$ROWS" | while IFS= read -r row; do
+            udid=$(echo "$row" | jq -r '.udid')
+            deviceName=$(echo "$row" | jq -r '.deviceName')
+            platformVersion=$(echo "$row" | jq -r '.platformVersion')
 
             echo "========================================"
-            echo "Running on Device: $deviceName"
-            echo "UDID: $udid"
-            echo "Android Version: $platformVersion"
+            echo "Running on Device : $deviceName"
+            echo "UDID              : $udid"
+            echo "Android Version   : $platformVersion"
             echo "========================================"
-            mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ github.event.inputs.testng_xml }} -Dudid=$udid -DdeviceName="$deviceName" -DplatformVersion=$platformVersion
 
+            mvn clean test \
+              -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" \
+              -Dudid="$udid" \
+              -DdeviceName="$deviceName" \
+              -DplatformVersion="$platformVersion"
+
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -ne 0 ]; then
+              echo "Tests FAILED on $deviceName (exit code: $EXIT_CODE)"
+              exit $EXIT_CODE
+            fi
+
+            echo "Tests PASSED on $deviceName"
+            echo "========================================"
           done
 
       # =========================
@@ -92,5 +131,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports
+          name: test-reports-${{ github.run_number }}
           path: target/
