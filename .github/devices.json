@@ -1,0 +1,5 @@
+[
+  { "id": "redmi",    "name": "Redmi Note 10 Pro", "udid": "a443a697",     "version": "13" },
+  { "id": "emulator", "name": "Pixel Emulator",    "udid": "emulator-5554","version": "33" },
+  { "id": "samsung",  "name": "Samsung Galaxy S23", "udid": "RF8N30YXXXX", "version": "14" }
+]

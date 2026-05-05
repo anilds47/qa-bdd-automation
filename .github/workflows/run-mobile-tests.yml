@@ -1,0 +1,93 @@
+name: Run Mobile Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      testng_xml:
+        description: 'TestNG XML file path'
+        required: true
+        default: 'testng-bdd-appium.xml'
+
+      devices:
+        description: 'Device(s) to run on'
+        required: true
+        type: choice
+        options:
+          - all
+          - redmi
+          - emulator
+          - samsung
+
+jobs:
+  # ── Job 1: Build the device matrix from JSON ─────────────────
+  prepare:
+    runs-on: self-hosted
+    outputs:
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build device matrix
+        id: build-matrix
+        run: |
+          SELECTION="${{ github.event.inputs.devices }}"
+          
+          if [ "$SELECTION" = "all" ]; then
+            # Use every device in the JSON
+            MATRIX=$(jq -c '{device: .}' .github/devices.json)
+          else
+            # Filter to just the selected device id
+            MATRIX=$(jq -c --arg sel "$SELECTION" '{device: [.[] | select(.id == $sel)]}' .github/devices.json)
+          fi
+
+          # Fail fast if nothing matched
+          COUNT=$(echo "$MATRIX" | jq '.device | length')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: No device matched selection '$SELECTION'"
+            exit 1
+          fi
+
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Resolved devices:"
+          echo "$MATRIX" | jq '.device[] | "  ✓ \(.name) [\(.udid)] Android \(.version)"' -r
+
+  # ── Job 2: Run tests in parallel across selected devices ─────
+  test:
+    needs: prepare
+    runs-on: self-hosted
+    strategy:
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+      fail-fast: false        # keep other devices running if one fails
+
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: anilds47/qa-core-framework
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: core-framework
+
+      - name: Build core framework
+        run: cd core-framework && mvn clean install -DskipTests
+
+      - name: Verify device connection
+        run: adb devices
+
+      - name: Run tests — ${{ matrix.device.name }}
+        run: |
+          echo "========================================"
+          echo "  Device  : ${{ matrix.device.name }}"
+          echo "  UDID    : ${{ matrix.device.udid }}"
+          echo "  Android : ${{ matrix.device.version }}"
+          echo "========================================"
+          mvn clean test -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" -Dudid="${{ matrix.device.udid }}" -DdeviceName="${{ matrix.device.name }}" -DplatformVersion="${{ matrix.device.version }}"
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.device.id }}-${{ github.run_number }}
+          path: target/
