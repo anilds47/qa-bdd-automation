@@ -110,24 +110,25 @@ jobs:
             exit 1
           }
         shell: powershell
-
       # ✅ 7. Wait for MySQL to be Ready
       - name: Wait for MySQL to be Ready
         run: |
           $mysqladmin = "$env:MYSQL_BIN\mysqladmin.exe"
           $retries = 10
+          $ready = $false
           for ($i = 1; $i -le $retries; $i++) {
-            Write-Host "Attempt $i of $retries — pinging MySQL..."
-            $result = & $mysqladmin -u root ping 2>&1
+            Write-Host "Attempt $i of $retries - pinging MySQL..."
+            & $mysqladmin -u root ping 2>&1
             if ($LASTEXITCODE -eq 0) {
               Write-Host "MySQL is ready!"
+              $ready = $true
               break
             }
-            if ($i -eq $retries) {
-              Write-Error "MySQL did not become ready in time."
-              exit 1
-            }
             Start-Sleep -Seconds 5
+          }
+          if (-not $ready) {
+            Write-Host "MySQL did not become ready in time."
+            exit 1
           }
         shell: powershell
 
