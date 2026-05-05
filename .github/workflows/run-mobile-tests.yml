@@ -29,27 +29,26 @@ jobs:
 
       - name: Build device matrix
         id: build-matrix
+        shell: pwsh
         run: |
-          SELECTION="${{ github.event.inputs.devices }}"
-          
-          if [ "$SELECTION" = "all" ]; then
-            # Use every device in the JSON
-            MATRIX=$(jq -c '{device: .}' .github/devices.json)
-          else
-            # Filter to just the selected device id
-            MATRIX=$(jq -c --arg sel "$SELECTION" '{device: [.[] | select(.id == $sel)]}' .github/devices.json)
-          fi
+          $selection = "${{ github.event.inputs.devices }}"
+          $devices = Get-Content ".github/devices.json" | ConvertFrom-Json
 
-          # Fail fast if nothing matched
-          COUNT=$(echo "$MATRIX" | jq '.device | length')
-          if [ "$COUNT" -eq 0 ]; then
-            echo "ERROR: No device matched selection '$SELECTION'"
+          if ($selection -eq "all") {
+            $filtered = $devices
+          } else {
+            $filtered = $devices | Where-Object { $_.id -eq $selection }
+          }
+
+          if ($filtered.Count -eq 0) {
+            Write-Error "ERROR: No device matched selection '$selection'"
             exit 1
-          fi
+          }
 
-          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
-          echo "Resolved devices:"
-          echo "$MATRIX" | jq '.device[] | "  ✓ \(.name) [\(.udid)] Android \(.version)"' -r
+          $matrix = @{ device = $filtered } | ConvertTo-Json -Compress -Depth 5
+          echo "matrix=$matrix" >> $env:GITHUB_OUTPUT
+
+          $filtered | ForEach-Object { Write-Host "  ✓ $($_.name) [$($_.udid)] Android $($_.version)" }
 
   # ── Job 2: Run tests in parallel across selected devices ─────
   test:
@@ -57,7 +56,7 @@ jobs:
     runs-on: self-hosted
     strategy:
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
-      fail-fast: false        # keep other devices running if one fails
+      fail-fast: false
 
     steps:
       - name: Checkout public repo
@@ -77,13 +76,7 @@ jobs:
         run: adb devices
 
       - name: Run tests — ${{ matrix.device.name }}
-        run: |
-          echo "========================================"
-          echo "  Device  : ${{ matrix.device.name }}"
-          echo "  UDID    : ${{ matrix.device.udid }}"
-          echo "  Android : ${{ matrix.device.version }}"
-          echo "========================================"
-          mvn clean test -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" -Dudid="${{ matrix.device.udid }}" -DdeviceName="${{ matrix.device.name }}" -DplatformVersion="${{ matrix.device.version }}"
+        run: mvn clean test -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" -Dudid="${{ matrix.device.udid }}" -DdeviceName="${{ matrix.device.name }}" -DplatformVersion="${{ matrix.device.version }}"
 
       - name: Upload test reports
         if: always()
