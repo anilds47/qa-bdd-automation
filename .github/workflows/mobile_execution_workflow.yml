@@ -63,10 +63,11 @@ jobs:
       - name: Run Tests
         run: |
           cd core-framework
-          mvn clean test 
-            -DsuiteXmlFile=${{ github.workspace }}/testng-bdd-appium.xml 
-            -Dudid=${{ inputs.udid }} 
-            -DdeviceName=${{ inputs.device_name }}
+
+          mvn clean test \
+            -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} \
+            -Dudid=${{ inputs.udid }} \
+            -DdeviceName="${{ inputs.device_name }}" \
             -DplatformVersion=${{ inputs.platform_version }}
       # ✅ 6. Upload Reports (optional but recommended)
       - name: Upload Test Reports
