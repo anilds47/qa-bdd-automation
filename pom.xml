@@ -268,7 +268,7 @@
               <version>3.1.2</version>  <!-- Use latest stable version -->
               <configuration>
                   <suiteXmlFiles>
-                      <suiteXmlFile>${suiteXmlFile}</suiteXmlFile>
+                      <suiteXmlFile>testng-bdd-appium.xml</suiteXmlFile>
                   </suiteXmlFiles>
               </configuration>
           </plugin>
