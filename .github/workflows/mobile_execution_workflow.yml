@@ -59,8 +59,7 @@ jobs:
 
       # ✅ 5. Run Tests (Dynamic XML + Device Config)
       - name: Run Mobile Tests
-        run: mvn clean test -DsuiteXmlFile=${{ github.event.inputs.testng_xml }} -DskipTests=false -Dtarget=real -Dudid=${{ github.event.inputs.udid }} -DdeviceName="${{ github.event.inputs.device_name }}" -DplatformVersion=${{ github.event.inputs.platform_version }}
-
+        run: mvn clean test -DsuiteXmlFile=${{ github.event.inputs.testng_xml }}
       # ✅ 6. Upload Reports (optional but recommended)
       - name: Upload Test Reports
         if: always()
