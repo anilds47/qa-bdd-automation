@@ -1,0 +1,54 @@
+name: Run Mobile Tests (Multi Device Sequential)
+
+on:
+  workflow_dispatch:
+    inputs:
+      testng_xml:
+        description: 'Enter TestNG XML file path'
+        required: true
+        default: 'testng-bdd-appium.xml'
+
+jobs:
+  test:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Public Repo
+        uses: actions/checkout@v4
+
+      - name: Checkout Private Repo
+        uses: actions/checkout@v4
+        with:
+          repository: anilds47/qa-core-framework
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: core-framework
+
+      - name: Build Framework
+        run: |
+          cd core-framework
+          mvn clean install -DskipTests
+
+      - name: Run Tests on Multiple Devices Sequentially
+        shell: bash
+        run: |
+          devices=(
+            "a443a697|Redmi Note 10 Pro|13"
+            "b1234567|Samsung S21|13"
+            "emulator-5554|Pixel Emulator|14"
+          )
+
+          for device in "${devices[@]}"
+          do
+            IFS="|" read udid name version <<< "$device"
+
+            echo "======================================"
+            echo "Running tests on: $name"
+            echo "UDID: $udid"
+            echo "Version: $version"
+            echo "======================================"
+
+            adb devices
+            mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} -Dudid=$udid -DdeviceName="$name" -DplatformVersion=$version
+    
+            echo "Completed execution on $name"
+          done
