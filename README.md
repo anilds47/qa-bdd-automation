@@ -1,4 +1,4 @@
-# Qa Bdd Automation
+# Qa Bdd Automation Framework
 
 A comprehensive UI automation testing framework built with Selenium WebDriver, Cucumber BDD, and TestNG. This framework supports both API and UI testing with detailed reporting, screenshot capture on failures, and Jira integration.
 
