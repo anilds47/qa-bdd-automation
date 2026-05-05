@@ -59,56 +59,107 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      # ✅ 5. Start MySQL (already pre-installed on windows-latest runner)
+      # ✅ 5. Discover and Start MySQL Service
       - name: Start MySQL Service
         run: |
-          Start-Service MySQL80
-          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqladmin.exe" -u root -proot ping --silent
-        shell: powershell
+          Write-Host "=== Listing all services with MySQL in name ==="
+          $mysqlService = Get-Service | Where-Object { $_.Name -like "*mysql*" -or $_.DisplayName -like "*mysql*" }
+          Write-Host "$($mysqlService | Select-Object Name, DisplayName, Status | Out-String)"
 
-      - name: Configure MySQL — Create DB and User
-        run: |
-          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -proot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
-          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
-          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
-          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p"${{ secrets.DB_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
-        shell: powershell
-
-      - name: Run DB Schema / Seed Scripts (if any)
-        run: |
-          if (Test-Path "src/test/resources/db/schema.sql") {
-            & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" ${{ secrets.DB_NAME }} < src/test/resources/db/schema.sql
-            Write-Host "Schema applied."
+          if ($mysqlService) {
+            $serviceName = $mysqlService[0].Name
+            Write-Host "Starting service: $serviceName"
+            Start-Service $serviceName
+            Start-Sleep -Seconds 5
+            Write-Host "Service '$serviceName' started successfully."
           } else {
-            Write-Host "No schema.sql found, skipping."
+            Write-Host "No MySQL service found. Attempting to start mysqld directly..."
+            $mysqldPath = Get-ChildItem "C:\Program Files\MySQL" -Recurse -Filter "mysqld.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($mysqldPath) {
+              Write-Host "Found mysqld at: $($mysqldPath.FullName)"
+              Start-Process -FilePath $mysqldPath.FullName -ArgumentList "--standalone" -NoNewWindow
+              Start-Sleep -Seconds 10
+            } else {
+              Write-Error "MySQL not found on this runner. Exiting."
+              exit 1
+            }
           }
         shell: powershell
 
-      - name: Configure MySQL — Create DB and User
+      # ✅ 6. Detect MySQL Binary Path
+      - name: Detect MySQL Binary Path
         run: |
-          & "C:\tools\mysql\current\bin\mysql.exe" -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
-          & "C:\tools\mysql\current\bin\mysql.exe" -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
-          & "C:\tools\mysql\current\bin\mysql.exe" -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
-          & "C:\tools\mysql\current\bin\mysql.exe" -u root -p"${{ secrets.DB_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
-        shell: powershell
-
-      - name: Run DB Schema / Seed Scripts (if any)
-        run: |
-          if (Test-Path "src/test/resources/db/schema.sql") {
-            & "C:\tools\mysql\current\bin\mysql.exe" -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" ${{ secrets.DB_NAME }} < src/test/resources/db/schema.sql
-            Write-Host "Schema applied."
+          $mysqlExe = Get-ChildItem "C:\Program Files\MySQL" -Recurse -Filter "mysql.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($mysqlExe) {
+            Write-Host "MySQL binary found at: $($mysqlExe.FullName)"
+            echo "MYSQL_BIN=$($mysqlExe.DirectoryName)" >> $env:GITHUB_ENV
           } else {
-            Write-Host "No schema.sql found, skipping."
+            Write-Error "mysql.exe not found under C:\Program Files\MySQL"
+            exit 1
           }
         shell: powershell
 
-      # ✅ 6. Build Core Framework
+      # ✅ 7. Wait for MySQL to be Ready
+      - name: Wait for MySQL to be Ready
+        run: |
+          $mysqladmin = "$env:MYSQL_BIN\mysqladmin.exe"
+          $retries = 10
+          for ($i = 1; $i -le $retries; $i++) {
+            Write-Host "Attempt $i of $retries — pinging MySQL..."
+            $result = & $mysqladmin -u root ping 2>&1
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "MySQL is ready!"
+              break
+            }
+            if ($i -eq $retries) {
+              Write-Error "MySQL did not become ready in time."
+              exit 1
+            }
+            Start-Sleep -Seconds 5
+          }
+        shell: powershell
+
+      # ✅ 8. Configure MySQL — Set Password, Create DB and User
+      - name: Configure MySQL
+        run: |
+          $mysql = "$env:MYSQL_BIN\mysql.exe"
+
+          Write-Host "Setting root password..."
+          & $mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';" 2>$null
+
+          Write-Host "Creating database..."
+          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
+
+          Write-Host "Creating user..."
+          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
+
+          Write-Host "Granting privileges..."
+          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
+
+          Write-Host "MySQL configuration complete."
+        shell: powershell
+
+      # ✅ 9. Apply Schema / Seed SQL (if exists)
+      - name: Run DB Schema / Seed Scripts
+        run: |
+          $mysql = "$env:MYSQL_BIN\mysql.exe"
+          $schemaPath = "src/test/resources/db/schema.sql"
+          if (Test-Path $schemaPath) {
+            Write-Host "Applying schema from $schemaPath ..."
+            & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" ${{ secrets.DB_NAME }} < $schemaPath
+            Write-Host "Schema applied successfully."
+          } else {
+            Write-Host "No schema.sql found at $schemaPath — skipping."
+          }
+        shell: powershell
+
+      # ✅ 10. Build Core Framework
       - name: Build Core Framework
         run: |
           cd core-framework
           mvn clean install -DskipTests
 
-      # ✅ 7. Install Selected Browser
+      # ✅ 11. Install Selected Browser
       - name: Install Chrome
         if: ${{ inputs.browser == 'chrome' }}
         uses: browser-actions/setup-chrome@v1
@@ -121,7 +172,7 @@ jobs:
         if: ${{ inputs.browser == 'edge' }}
         uses: browser-actions/setup-edge@v1
 
-      # ✅ 8. Debug Inputs
+      # ✅ 12. Debug Inputs
       - name: Debug Inputs
         run: |
           echo "XML:      ${{ github.event.inputs.testng_xml }}"
@@ -129,7 +180,7 @@ jobs:
           echo "Headless: ${{ github.event.inputs.headless }}"
           echo "XML Path: ${{ github.workspace }}/${{ github.event.inputs.testng_xml }}"
 
-      # ✅ 9. Run Tests (Dynamic XML + Browser + DB Config)
+      # ✅ 13. Run Tests
       - name: Run Tests
         run: mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} -Dbrowser=${{ inputs.browser }} -Dheadless=${{ inputs.headless }}
         env:
@@ -137,7 +188,7 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
-      # ✅ 10. Upload Extent Report artifact
+      # ✅ 14. Upload Extent Report artifact
       - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -146,7 +197,7 @@ jobs:
           path: target/
           retention-days: 30
 
-      # ✅ 11. Post Report Link to Job Summary
+      # ✅ 15. Post Report Link to Job Summary
       - name: Post Report Link to Summary
         if: always()
         run: |
