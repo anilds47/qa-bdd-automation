@@ -6,7 +6,7 @@ on:
       testng_xml:
         description: 'Enter TestNG XML file path'
         required: true
-        default: 'src/test/resources/testng/testng-bdd-appium.xml'
+        default: 'testng-bdd-appium.xml'
 
       udid:
         description: 'Device UDID'
