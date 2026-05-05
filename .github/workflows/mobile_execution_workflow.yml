@@ -43,7 +43,7 @@ jobs:
       - name: Checkout Private Core Repo
         uses: actions/checkout@v4
         with:
-          repository: YOUR_USERNAME/your-private-core-repo
+          repository: anilds47/qa-core-framework
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           path: core-framework
 
