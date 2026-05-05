@@ -56,6 +56,7 @@ jobs:
           echo "UDID: ${{ github.event.inputs.udid }}"
           echo "Device: ${{ github.event.inputs.device_name }}"
           echo "Platform: ${{ github.event.inputs.platform_version }}"
+          echo "Constructed XML Path: ${{ github.workspace }}/testng-bdd-appium.xml"
 
       # ✅ 5. Run Tests (Dynamic XML + Device Config)
       - name: Run Mobile Tests
