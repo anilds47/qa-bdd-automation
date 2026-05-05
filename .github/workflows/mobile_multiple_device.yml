@@ -7,23 +7,10 @@ on:
         description: 'Enter TestNG XML file path'
         required: true
         default: 'testng-bdd-appium.xml'
-
       devices:
         description: 'Devices JSON (UDID, deviceName, platformVersion)'
         required: true
-        default: |
-          [
-            {
-              "udid": "a443a697",
-              "deviceName": "Redmi Note 10 Pro",
-              "platformVersion": "13"
-            },
-            {
-              "udid": "emulator-5554",
-              "deviceName": "Pixel Emulator",
-              "platformVersion": "33"
-            }
-          ]
+        default: '[{"udid":"a443a697","deviceName":"Redmi Note 10 Pro","platformVersion":"13"},{"udid":"emulator-5554","deviceName":"Pixel Emulator","platformVersion":"33"}]'
 
 jobs:
   test:
