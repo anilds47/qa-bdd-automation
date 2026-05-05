@@ -115,7 +115,6 @@ jobs:
 
           Write-Host "MySQL setup complete!"
         shell: powershell
-
       # ✅ 9. Apply Schema / Seed SQL (if exists)
       - name: Run DB Schema / Seed Scripts
         run: |
@@ -123,10 +122,11 @@ jobs:
           $schemaPath = "src/test/resources/db/schema.sql"
           if (Test-Path $schemaPath) {
             Write-Host "Applying schema from $schemaPath ..."
-            & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" ${{ secrets.DB_NAME }} < $schemaPath
+            $sql = Get-Content $schemaPath -Raw
+            $sql | & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" ${{ secrets.DB_NAME }}
             Write-Host "Schema applied successfully."
           } else {
-            Write-Host "No schema.sql found at $schemaPath — skipping."
+            Write-Host "No schema.sql found at $schemaPath - skipping."
           }
         shell: powershell
 
