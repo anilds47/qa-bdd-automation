@@ -1,0 +1,96 @@
+name: Run Mobile Tests (Public + Private Repo)
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Select Target"
+        required: true
+        type: choice
+        options:
+          - real
+          - emulator
+
+      deviceName:
+        description: "Select Real Device"
+        type: choice
+        options:
+          - Redmi_Note_10_Pro
+          - Samsung_S21
+        default: Redmi_Note_10_Pro
+
+      emulatorName:
+        description: "Select Emulator"
+        type: choice
+        options:
+          - pixel_4
+          - pixel_6
+        default: pixel_4
+
+      apiLevel:
+        description: "Android API Level"
+        default: "30"
+
+jobs:
+  test:
+    runs-on: self-hosted
+
+    steps:
+      # ✅ 1. Checkout PUBLIC repo (testcases)
+      - name: Checkout Public Repo
+        uses: actions/checkout@v4
+
+      # ✅ 2. Checkout PRIVATE repo (core framework)
+      - name: Checkout Private Core Repo
+        uses: actions/checkout@v4
+        with:
+          repository: YOUR_USERNAME/your-private-core-repo
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: core-framework
+
+      # ✅ 3. Build core framework
+      - name: Build Core Framework
+        run: |
+          cd core-framework
+          mvn clean install -DskipTests
+
+      # 🔹 Map Device → UDID
+      - name: Set UDID for Real Device
+        if: ${{ github.event.inputs.target == 'real' }}
+        run: |
+          DEVICE="${{ github.event.inputs.deviceName }}"
+
+          if [ "$DEVICE" = "Redmi_Note_10_Pro" ]; then
+            echo "UDID=a443a697" >> $GITHUB_ENV
+            echo "DEVICE_NAME=Redmi Note 10 Pro" >> $GITHUB_ENV
+            echo "PLATFORM_VERSION=13" >> $GITHUB_ENV
+
+          elif [ "$DEVICE" = "Samsung_S21" ]; then
+            echo "UDID=RZ8N12345" >> $GITHUB_ENV
+            echo "DEVICE_NAME=Samsung Galaxy S21" >> $GITHUB_ENV
+            echo "PLATFORM_VERSION=12" >> $GITHUB_ENV
+          fi
+
+      # 🔹 Run on REAL DEVICE
+      - name: Run on Real Device
+        if: ${{ github.event.inputs.target == 'real' }}
+        run: |
+          adb devices
+
+          mvn clean test \
+          -Dtarget=real \
+          -Dudid=$UDID \
+          -DdeviceName="$DEVICE_NAME" \
+          -DplatformVersion=$PLATFORM_VERSION
+
+      # 🔹 Run on EMULATOR
+      - name: Run on Emulator
+        if: ${{ github.event.inputs.target == 'emulator' }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ github.event.inputs.apiLevel }}
+          profile: ${{ github.event.inputs.emulatorName }}
+          script: |
+            mvn clean test \
+            -Dtarget=emulator \
+            -DdeviceName=${{ github.event.inputs.emulatorName }} \
+            -DplatformVersion=${{ github.event.inputs.apiLevel }}
