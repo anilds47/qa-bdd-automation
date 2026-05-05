@@ -267,7 +267,9 @@
               <artifactId>maven-surefire-plugin</artifactId>
               <version>3.1.2</version>  <!-- Use latest stable version -->
               <configuration>
-                  <skipTests>true</skipTests>
+                  <suiteXmlFiles>
+                      <suiteXmlFile>${suiteXmlFile}</suiteXmlFile>
+                  </suiteXmlFiles>
               </configuration>
           </plugin>
       </plugins>
