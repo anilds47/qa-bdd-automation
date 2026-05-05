@@ -1,20 +1,47 @@
 name: Run Mobile Tests (Multi-Device JSON)
 
+# ============================================================
+# HOW TO ADD A NEW DEVICE:
+#   1. Add a new boolean input below  (e.g. run_oneplus)
+#   2. Add a new step in "Execute Tests" section at the bottom
+#      copying the pattern of the existing device steps.
+#   That's it — no JSON editing, no index tracking.
+# ============================================================
+
 on:
   workflow_dispatch:
     inputs:
+
       testng_xml:
         description: 'Enter TestNG XML file path'
         required: true
         default: 'testng-bdd-appium.xml'
-      devices:
-        description: 'Devices JSON (UDID, deviceName, platformVersion)'
-        required: true
-        default: '[{"udid":"a443a697","deviceName":"Redmi Note 10 Pro","platformVersion":"13"},{"udid":"emulator-5554","deviceName":"Pixel Emulator","platformVersion":"33"}]'
-      device_index:
-        description: 'Device to run on (0=Redmi Note 10 Pro, 1=Pixel Emulator, -1=All devices)'
-        required: true
-        default: '-1'
+
+      # ── Device toggles ──────────────────────────────────────
+      # Set default: true  → pre-checked in UI
+      # Set default: false → unchecked in UI
+      # To add a device: copy one block and update name + description
+
+      run_redmi:
+        description: 'Run on Redmi Note 10 Pro (UDID: a443a697 | Android 13)'
+        type: boolean
+        default: false
+
+      run_emulator:
+        description: 'Run on Pixel Emulator (UDID: emulator-5554 | Android 33)'
+        type: boolean
+        default: false
+
+      run_samsung:
+        description: 'Run on Samsung Galaxy S23 (UDID: RF8N30YXXXX | Android 14)'
+        type: boolean
+        default: false
+
+      # ── ADD MORE DEVICES BELOW ───────────────────────────────
+      # run_oneplus:
+      #   description: 'Run on OnePlus 11 (UDID: YOUR_UDID | Android 13)'
+      #   type: boolean
+      #   default: false
 
 jobs:
   test:
@@ -22,13 +49,36 @@ jobs:
 
     steps:
       # =========================
-      # 1. Checkout PUBLIC repo
+      # 1. Validate — at least one device must be selected
+      # =========================
+      - name: Validate Device Selection
+        run: |
+          REDMI="${{ github.event.inputs.run_redmi }}"
+          EMULATOR="${{ github.event.inputs.run_emulator }}"
+          SAMSUNG="${{ github.event.inputs.run_samsung }}"
+          # Add new device variables here when you add a device
+
+          if [ "$REDMI" != "true" ] && [ "$EMULATOR" != "true" ] && [ "$SAMSUNG" != "true" ]; then
+            echo "============================================"
+            echo "ERROR: No device selected!"
+            echo "Please enable at least one device toggle."
+            echo "============================================"
+            exit 1
+          fi
+
+          echo "Selected devices:"
+          [ "$REDMI"    = "true" ] && echo "  ✓ Redmi Note 10 Pro"
+          [ "$EMULATOR" = "true" ] && echo "  ✓ Pixel Emulator"
+          [ "$SAMSUNG"  = "true" ] && echo "  ✓ Samsung Galaxy S23"
+
+      # =========================
+      # 2. Checkout PUBLIC repo
       # =========================
       - name: Checkout Public Repo
         uses: actions/checkout@v4
 
       # =========================
-      # 2. Checkout PRIVATE repo (framework)
+      # 3. Checkout PRIVATE repo (framework)
       # =========================
       - name: Checkout Private Core Repo
         uses: actions/checkout@v4
@@ -38,7 +88,7 @@ jobs:
           path: core-framework
 
       # =========================
-      # 3. Build Core Framework
+      # 4. Build Core Framework
       # =========================
       - name: Build Core Framework
         run: |
@@ -46,86 +96,79 @@ jobs:
           mvn clean install -DskipTests
 
       # =========================
-      # 4. Verify Device Connection
+      # 5. Verify Device Connection
       # =========================
       - name: Check Connected Devices
         run: adb devices
 
       # =========================
-      # 5. Install jq (for JSON parsing)
+      # 6. Run — Redmi Note 10 Pro
       # =========================
-      - name: Install jq (if not present)
+      - name: 'Test on Redmi Note 10 Pro'
+        if: ${{ github.event.inputs.run_redmi == 'true' }}
         run: |
-          if ! command -v jq &> /dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y jq
-          else
-            echo "jq already installed: $(jq --version)"
-          fi
+          echo "========================================"
+          echo "  Device  : Redmi Note 10 Pro"
+          echo "  UDID    : a443a697"
+          echo "  Android : 13"
+          echo "========================================"
+          mvn clean test \
+            -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" \
+            -Dudid="a443a697" \
+            -DdeviceName="Redmi Note 10 Pro" \
+            -DplatformVersion="13"
 
       # =========================
-      # 6. Debug Inputs
+      # 7. Run — Pixel Emulator
       # =========================
-      - name: Debug Inputs
+      - name: 'Test on Pixel Emulator'
+        if: ${{ github.event.inputs.run_emulator == 'true' }}
         run: |
-          echo "TestNG XML   : ${{ github.event.inputs.testng_xml }}"
-          echo "Device Index : ${{ github.event.inputs.device_index }}"
-          echo "Devices JSON : ${{ github.event.inputs.devices }}"
+          echo "========================================"
+          echo "  Device  : Pixel Emulator"
+          echo "  UDID    : emulator-5554"
+          echo "  Android : 33"
+          echo "========================================"
+          mvn clean test \
+            -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" \
+            -Dudid="emulator-5554" \
+            -DdeviceName="Pixel Emulator" \
+            -DplatformVersion="33"
 
       # =========================
-      # 7. Run Tests on Selected Device(s)
+      # 8. Run — Samsung Galaxy S23
       # =========================
-      - name: Execute Tests on Selected Device(s)
+      - name: 'Test on Samsung Galaxy S23'
+        if: ${{ github.event.inputs.run_samsung == 'true' }}
         run: |
-          echo '${{ github.event.inputs.devices }}' > devices.json
+          echo "========================================"
+          echo "  Device  : Samsung Galaxy S23"
+          echo "  UDID    : RF8N30YXXXX"
+          echo "  Android : 14"
+          echo "========================================"
+          mvn clean test \
+            -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" \
+            -Dudid="RF8N30YXXXX" \
+            -DdeviceName="Samsung Galaxy S23" \
+            -DplatformVersion="14"
 
-          INDEX="${{ github.event.inputs.device_index }}"
-
-          # Select one device or all devices based on index
-          if [ "$INDEX" = "-1" ]; then
-            echo "Running on ALL devices..."
-            ROWS=$(jq -c '.[]' devices.json)
-          else
-            echo "Running on device at index: $INDEX"
-            ROWS=$(jq -c ".[$INDEX]" devices.json)
-
-            # Validate that the index exists
-            if [ "$ROWS" = "null" ] || [ -z "$ROWS" ]; then
-              echo "ERROR: No device found at index $INDEX. Check your devices JSON."
-              exit 1
-            fi
-          fi
-
-          # Iterate and run tests
-          echo "$ROWS" | while IFS= read -r row; do
-            udid=$(echo "$row" | jq -r '.udid')
-            deviceName=$(echo "$row" | jq -r '.deviceName')
-            platformVersion=$(echo "$row" | jq -r '.platformVersion')
-
-            echo "========================================"
-            echo "Running on Device : $deviceName"
-            echo "UDID              : $udid"
-            echo "Android Version   : $platformVersion"
-            echo "========================================"
-
-            mvn clean test \
-              -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" \
-              -Dudid="$udid" \
-              -DdeviceName="$deviceName" \
-              -DplatformVersion="$platformVersion"
-
-            EXIT_CODE=$?
-            if [ $EXIT_CODE -ne 0 ]; then
-              echo "Tests FAILED on $deviceName (exit code: $EXIT_CODE)"
-              exit $EXIT_CODE
-            fi
-
-            echo "Tests PASSED on $deviceName"
-            echo "========================================"
-          done
+      # ── ADD NEW DEVICE STEP BELOW ──────────────────────────
+      # - name: 'Test on OnePlus 11'
+      #   if: ${{ github.event.inputs.run_oneplus == 'true' }}
+      #   run: |
+      #     echo "========================================"
+      #     echo "  Device  : OnePlus 11"
+      #     echo "  UDID    : YOUR_UDID"
+      #     echo "  Android : 13"
+      #     echo "========================================"
+      #     mvn clean test \
+      #       -DsuiteXmlFile="${{ github.workspace }}/${{ github.event.inputs.testng_xml }}" \
+      #       -Dudid="YOUR_UDID" \
+      #       -DdeviceName="OnePlus 11" \
+      #       -DplatformVersion="13"
 
       # =========================
-      # 8. Upload Reports
+      # 9. Upload Reports
       # =========================
       - name: Upload Test Reports
         if: always()
