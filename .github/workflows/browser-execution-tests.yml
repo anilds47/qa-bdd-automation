@@ -59,27 +59,28 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      # ✅ 5. Install and Start MySQL (Windows runner — no service containers)
-      - name: Install MySQL
+      # ✅ 5. Start MySQL (already pre-installed on windows-latest runner)
+      - name: Start MySQL Service
         run: |
-          choco install mysql --version=8.0.36 -y
-          & "C:\tools\mysql\current\bin\mysqld.exe" --install
-          Start-Service MySQL
+          Start-Service MySQL80
+          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqladmin.exe" -u root -proot ping --silent
         shell: powershell
 
-      - name: Wait for MySQL to be ready
+      - name: Configure MySQL — Create DB and User
         run: |
-          $retries = 10
-          for ($i = 0; $i -lt $retries; $i++) {
-            try {
-              & "C:\tools\mysql\current\bin\mysqladmin.exe" -u root ping 2>$null
-              if ($LASTEXITCODE -eq 0) {
-                Write-Host "MySQL is ready!"
-                break
-              }
-            } catch {}
-            Write-Host "Waiting for MySQL... attempt $($i+1)"
-            Start-Sleep -Seconds 5
+          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -proot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
+          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
+          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
+          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p"${{ secrets.DB_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
+        shell: powershell
+
+      - name: Run DB Schema / Seed Scripts (if any)
+        run: |
+          if (Test-Path "src/test/resources/db/schema.sql") {
+            & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" ${{ secrets.DB_NAME }} < src/test/resources/db/schema.sql
+            Write-Host "Schema applied."
+          } else {
+            Write-Host "No schema.sql found, skipping."
           }
         shell: powershell
 
