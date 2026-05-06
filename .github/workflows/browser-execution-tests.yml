@@ -63,84 +63,13 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      # ✅ 5. Initialize, Start and Verify MySQL
-      - name: Setup and Start MySQL
-        run: |
-          $mysqlBin  = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
-          $mysqld    = "$mysqlBin\mysqld.exe"
-          $mysqladmin = "$mysqlBin\mysqladmin.exe"
-          $mysql     = "$mysqlBin\mysql.exe"
-          $dataDir   = "C:\MySQLData"
-
-          # Export bin path for later steps
-          echo "MYSQL_BIN=$mysqlBin" >> $env:GITHUB_ENV
-
-          Write-Host "=== Step 1: Creating data directory ==="
-          New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
-
-          Write-Host "=== Step 2: Initializing MySQL ==="
-          & $mysqld --initialize-insecure --datadir="$dataDir" --console
-          Write-Host "Init exit code: $LASTEXITCODE"
-          Start-Sleep -Seconds 5
-
-          Write-Host "=== Step 3: Starting MySQL server ==="
-          $proc = Start-Process -FilePath $mysqld `
-            -ArgumentList "--datadir=$dataDir --port=3306 --bind-address=127.0.0.1 --console" `
-            -NoNewWindow -PassThru
-          Write-Host "mysqld PID: $($proc.Id)"
-
-          Write-Host "=== Step 4: Waiting for MySQL to be ready ==="
-          $ready = $false
-          for ($i = 1; $i -le 20; $i++) {
-            Start-Sleep -Seconds 5
-            Write-Host "Ping attempt $i of 20..."
-            $ping = & $mysqladmin -u root --connect-timeout=3 ping 2>&1
-            Write-Host "Result: $ping"
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "MySQL is ready!"
-              $ready = $true
-              break
-            }
-          }
-
-          if (-not $ready) {
-            Write-Host "MySQL failed to start. Dumping mysqld output..."
-            Get-EventLog -LogName Application -Source "MySQL*" -Newest 20 -ErrorAction SilentlyContinue
-            exit 1
-          }
-
-          Write-Host "=== Step 5: Setting root password ==="
-          & $mysql -u root --connect-expired-password -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
-
-          Write-Host "=== Step 6: Creating DB and user ==="
-          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
-          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
-          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
-
-          Write-Host "MySQL setup complete!"
-        shell: powershell
-      # ✅ 9. Apply Schema / Seed SQL (if exists)
-      - name: Run DB Schema / Seed Scripts
-        run: |
-          $mysql = "$env:MYSQL_BIN\mysql.exe"
-          $schemaPath = "src/test/resources/db/schema.sql"
-          if (Test-Path $schemaPath) {
-            Write-Host "Applying schema from $schemaPath ..."
-            $sql = Get-Content $schemaPath -Raw
-            $sql | & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" ${{ secrets.DB_NAME }}
-            Write-Host "Schema applied successfully."
-          } else {
-            Write-Host "No schema.sql found at $schemaPath - skipping."
-          }
-        shell: powershell
-
-      # ✅ 10. Build Core Framework
+      # ✅ 5. Build Core Framework
       - name: Build Core Framework
         run: |
           cd core-framework
           mvn clean install -DskipTests
 
-      # ✅ 11. Install Selected Browser
+      # ✅ 6. Install Selected Browser
       - name: Install Chrome
         if: ${{ inputs.browser == 'chrome' }}
         uses: browser-actions/setup-chrome@v1
@@ -153,7 +82,7 @@ jobs:
         if: ${{ inputs.browser == 'edge' }}
         uses: browser-actions/setup-edge@v1
 
-      # ✅ 12. Debug Inputs
+      # ✅ 7. Debug Inputs
       - name: Debug Inputs
         run: |
           echo "XML:      ${{ github.event.inputs.testng_xml }}"
@@ -161,15 +90,11 @@ jobs:
           echo "Headless: ${{ github.event.inputs.headless }}"
           echo "XML Path: ${{ github.workspace }}/${{ github.event.inputs.testng_xml }}"
 
-      # ✅ 13. Run Tests
+      # ✅ 8. Run Tests
       - name: Run Tests
         run: mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} -Dbrowser=${{ inputs.browser }} -Dheadless=${{ inputs.headless }}
-        env:
-          DB_URL: jdbc:mysql://127.0.0.1:3306/${{ secrets.DB_NAME }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
-      # ✅ 14. Upload Extent Report artifact
+      # ✅ 9. Upload Extent Report artifact
       - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -178,7 +103,7 @@ jobs:
           path: target/
           retention-days: 30
 
-      # ✅ 15. Post Report Link to Job Summary
+      # ✅ 10. Post Report Link to Job Summary
       - name: Post Report Link to Summary
         if: always()
         run: |

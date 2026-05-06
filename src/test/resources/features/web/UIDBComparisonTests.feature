@@ -1,6 +1,6 @@
 Feature: UI and DB Data Comparison
   As a tester, I want to compare UI data with database values.
-
+  @DB
   Scenario: Verify UI and DB comparison for Europe data
     Given I connect to the database
     When I query total cases from the Europe table

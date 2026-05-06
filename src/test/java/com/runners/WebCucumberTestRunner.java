@@ -9,10 +9,11 @@ import org.testng.annotations.*;
 import java.io.IOException;
 
 @CucumberOptions(
-    features = {"src/test/resources/features/web"},  // Run only UI-related features
-    glue = {"com.stepdefinitions.api", "com.stepdefinitions.mobile", "com.stepdefinitions.web"},  // Package for step definitions
-    plugin = {"pretty", "html:target/cucumber-reports.html"},  // Reporting
-    monochrome = true
+        features = {"src/test/resources/features/web"},
+        glue = {"com.stepdefinitions.api", "com.stepdefinitions.mobile", "com.stepdefinitions.web"},
+        plugin = {"pretty", "html:target/cucumber-reports.html"},
+        monochrome = true,
+        tags = "@web"  // Add this line
 )
 public class WebCucumberTestRunner extends AbstractTestNGCucumberTests {
     private TestBaseClass base = new TestBaseClass();
