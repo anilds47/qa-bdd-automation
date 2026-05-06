@@ -12,8 +12,7 @@ import java.io.IOException;
         features = {"src/test/resources/features/web"},
         glue = {"com.stepdefinitions.api", "com.stepdefinitions.mobile", "com.stepdefinitions.web"},
         plugin = {"pretty", "html:target/cucumber-reports.html"},
-        monochrome = true,
-        tags = "@web"  // Add this line
+        monochrome = true
 )
 public class WebCucumberTestRunner extends AbstractTestNGCucumberTests {
     private TestBaseClass base = new TestBaseClass();
