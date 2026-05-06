@@ -1,6 +1,6 @@
 Feature: UI Search Functionality
   As a user, I want to search for items on the website.
-  @Web
+  @web
   Scenario: Verify filter functionality
     Given I navigate to the URL from test data
     When I click on the search button
