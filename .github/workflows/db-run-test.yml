@@ -32,11 +32,11 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      # ✅ 1. Checkout PUBLIC repo (your test cases)
+      # ✅ 1. Checkout PUBLIC repo
       - name: Checkout Public Repo
         uses: actions/checkout@v4
 
-      # ✅ 2. Checkout PRIVATE repo (core framework)
+      # ✅ 2. Checkout PRIVATE repo
       - name: Checkout Private Core Repo
         uses: actions/checkout@v4
         with:
@@ -44,7 +44,7 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           path: core-framework
 
-      # ✅ 3. Cache Maven dependencies
+      # ✅ 3. Cache Maven
       - name: Cache Maven packages
         uses: actions/cache@v4
         with:
@@ -52,58 +52,95 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      # ✅ 4. Verify MySQL is Running (PowerShell)
+      # ✅ 4. Debug MySQL availability
+      - name: Debug MySQL Path
+        run: |
+          Write-Host "Checking MySQL commands..."
+          where mysql
+          where mysqladmin
+        shell: powershell
+
+      # ✅ 5. Set MySQL Paths (IMPORTANT FIX)
+      - name: Set MySQL Paths
+        run: |
+          $env:MYSQL_PATH = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+          $env:MYSQLADMIN_PATH = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqladmin.exe"
+
+          if (!(Test-Path $env:MYSQL_PATH)) {
+            Write-Host "❌ mysql.exe not found at $env:MYSQL_PATH"
+            exit 1
+          }
+
+          if (!(Test-Path $env:MYSQLADMIN_PATH)) {
+            Write-Host "❌ mysqladmin.exe not found at $env:MYSQLADMIN_PATH"
+            exit 1
+          }
+
+          Write-Host "✅ MySQL tools found"
+        shell: powershell
+
+      # ✅ 6. Verify MySQL is Running
       - name: Verify MySQL is Running
         run: |
+          $mysqladmin = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqladmin.exe"
+
           $ready = $false
           for ($i = 1; $i -le 15; $i++) {
             Write-Host "Attempt $i - pinging MySQL..."
-            $result = & mysqladmin ping -h 127.0.0.1 -P 3306 -u ${{ secrets.DB_USER }} -p${{ secrets.DB_PASSWORD }} --silent 2>&1
+            & $mysqladmin ping -h 127.0.0.1 -P 3306 -u ${{ secrets.DB_USER }} -p${{ secrets.DB_PASSWORD }} --silent
+
             if ($LASTEXITCODE -eq 0) {
-              Write-Host "MySQL is ready!"
+              Write-Host "✅ MySQL is ready!"
               $ready = $true
               break
             }
+
             Write-Host "Waiting for MySQL..."
             Start-Sleep -Seconds 2
           }
+
           if (-not $ready) {
-            Write-Host "MySQL did not respond in time."
+            Write-Host "❌ MySQL did not respond in time."
             exit 1
           }
         shell: powershell
 
-      # ✅ 5. Ensure DB and User exist
+      # ✅ 7. Configure DB
       - name: Configure MySQL
         run: |
-          & mysql -h 127.0.0.1 -P 3306 -u root -p${{ secrets.DB_ROOT_PASSWORD }} -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
-          & mysql -h 127.0.0.1 -P 3306 -u root -p${{ secrets.DB_ROOT_PASSWORD }} -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
-          & mysql -h 127.0.0.1 -P 3306 -u root -p${{ secrets.DB_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
-          Write-Host "DB configured successfully."
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+
+          & $mysql -h 127.0.0.1 -P 3306 -u root -p${{ secrets.DB_ROOT_PASSWORD }} -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
+          & $mysql -h 127.0.0.1 -P 3306 -u root -p${{ secrets.DB_ROOT_PASSWORD }} -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
+          & $mysql -h 127.0.0.1 -P 3306 -u root -p${{ secrets.DB_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
+
+          Write-Host "✅ DB configured successfully."
         shell: powershell
 
-      # ✅ 6. Apply Schema if exists
+      # ✅ 8. Apply Schema
       - name: Run DB Schema / Seed Scripts
         run: |
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
           $schemaPath = "src/test/resources/db/schema.sql"
+
           if (Test-Path $schemaPath) {
-            Write-Host "Applying schema from $schemaPath ..."
+            Write-Host "Applying schema..."
             $sql = Get-Content $schemaPath -Raw
-            $sql | & mysql -h 127.0.0.1 -P 3306 -u ${{ secrets.DB_USER }} -p${{ secrets.DB_PASSWORD }} ${{ secrets.DB_NAME }}
-            Write-Host "Schema applied successfully."
+            $sql | & $mysql -h 127.0.0.1 -P 3306 -u ${{ secrets.DB_USER }} -p${{ secrets.DB_PASSWORD }} ${{ secrets.DB_NAME }}
+            Write-Host "✅ Schema applied."
           } else {
-            Write-Host "No schema.sql found - skipping."
+            Write-Host "⚠️ No schema.sql found - skipping."
           }
         shell: powershell
 
-      # ✅ 7. Build Core Framework
+      # ✅ 9. Build Core Framework
       - name: Build Core Framework
         run: |
           cd core-framework
           mvn clean install -DskipTests
         shell: powershell
 
-      # ✅ 8. Install Selected Browser
+      # ✅ 10. Install Browser
       - name: Install Chrome
         if: ${{ inputs.browser == 'chrome' }}
         uses: browser-actions/setup-chrome@v1
@@ -116,16 +153,7 @@ jobs:
         if: ${{ inputs.browser == 'edge' }}
         uses: browser-actions/setup-edge@v1
 
-      # ✅ 9. Debug Inputs
-      - name: Debug Inputs
-        run: |
-          Write-Host "XML:      ${{ github.event.inputs.testng_xml }}"
-          Write-Host "Browser:  ${{ github.event.inputs.browser }}"
-          Write-Host "Headless: ${{ github.event.inputs.headless }}"
-          Write-Host "XML Path: ${{ github.workspace }}/${{ github.event.inputs.testng_xml }}"
-        shell: powershell
-
-      # ✅ 10. Run Tests
+      # ✅ 11. Run Tests
       - name: Run Tests
         run: mvn clean test "-DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }}" "-Dbrowser=${{ inputs.browser }}" "-Dheadless=${{ inputs.headless }}"
         shell: powershell
@@ -134,22 +162,10 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
-      # ✅ 11. Upload Extent Report artifact
+      # ✅ 12. Upload Report
       - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: extent-report-${{ github.run_number }}
           path: target/
-          retention-days: 30
-
-      # ✅ 12. Post Report Link to Job Summary
-      - name: Post Report Link to Summary
-        if: always()
-        run: |
-          echo "## 📊 Browser Test Report" >> $env:GITHUB_STEP_SUMMARY
-          echo "" >> $env:GITHUB_STEP_SUMMARY
-          echo "| Input        | Value |" >> $env:GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $env:GITHUB_STEP_SUMMARY
-          echo "| **XML File** | ``${{ inputs.testng_xml }}`` |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| **Br
