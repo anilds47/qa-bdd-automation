@@ -29,7 +29,7 @@ on:
 
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       # ✅ 1. Checkout PUBLIC repo (your test cases)
