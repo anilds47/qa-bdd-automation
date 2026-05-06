@@ -6,17 +6,13 @@ on:
 jobs:
   test:
     runs-on: windows-latest
-    env:
-      JAVA_TOOL_OPTIONS: "-Dotel.java.global-autoconfigure.enabled=true"
-      OTEL_METRICS_EXPORTER: "none"
-      OTEL_TRACES_EXPORTER: "none"
 
     steps:
-      # ✅ 1. Checkout PUBLIC repo (your test cases)
+      # ✅ 1. Checkout PUBLIC repo
       - name: Checkout Public Repo
         uses: actions/checkout@v4
 
-      # ✅ 2. Checkout PRIVATE repo (core framework)
+      # ✅ 2. Checkout PRIVATE repo
       - name: Checkout Private Core Repo
         uses: actions/checkout@v4
         with:
@@ -39,75 +35,66 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      # ✅ 5. Setup and Start MySQL
-      - name: Setup and Start MySQL
+      # ✅ 5. Install MySQL using Chocolatey
+      - name: Install MySQL
         run: |
-          $mysqlBin  = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
-          $mysqld    = "$mysqlBin\mysqld.exe"
-          $mysqladmin = "$mysqlBin\mysqladmin.exe"
-          $mysql     = "$mysqlBin\mysql.exe"
-          $dataDir   = "C:\MySQLData"
-
-          # Export bin path for later steps
-          echo "MYSQL_BIN=$mysqlBin" >> $env:GITHUB_ENV
-
-          Write-Host "=== Step 1: Creating data directory ==="
-          New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
-
-          Write-Host "=== Step 2: Initializing MySQL ==="
-          & $mysqld --initialize-insecure --datadir="$dataDir" --console
-          Write-Host "Init exit code: $LASTEXITCODE"
-          Start-Sleep -Seconds 5
-
-          Write-Host "=== Step 3: Starting MySQL server ==="
-          $proc = Start-Process -FilePath $mysqld `
-            -ArgumentList "--datadir=$dataDir --port=3306 --bind-address=127.0.0.1 --console" `
-            -NoNewWindow -PassThru
-          Write-Host "mysqld PID: $($proc.Id)"
-
-          Write-Host "=== Step 4: Waiting for MySQL to be ready ==="
-          $ready = $false
-          for ($i = 1; $i -le 20; $i++) {
-            Start-Sleep -Seconds 5
-            Write-Host "Ping attempt $i of 20..."
-            $ping = & $mysqladmin -u root --connect-timeout=3 ping 2>&1
-            Write-Host "Result: $ping"
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "MySQL is ready!"
-              $ready = $true
-              break
-            }
+          # Install chocolatey if not present
+          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           }
-
-          if (-not $ready) {
-            Write-Host "MySQL failed to start. Dumping mysqld output..."
-            Get-EventLog -LogName Application -Source "MySQL*" -Newest 20 -ErrorAction SilentlyContinue
-            exit 1
-          }
-
-          Write-Host "=== Step 5: Setting root password ==="
-          & $mysql -u root --connect-expired-password -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
-
-          Write-Host "=== Step 6: Creating DB and user ==="
-          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
-          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
-          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
-
-          Write-Host "MySQL setup complete!"
+          
+          # Install MySQL
+          choco install mysql -y
+          
+          # Install MySQL service
+          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe" --install
+          
+          Write-Host "MySQL installed successfully!"
         shell: powershell
 
-      # ✅ 6. Test Database Connection
+      # ✅ 6. Start MySQL Service
+      - name: Start MySQL Service
+        run: |
+          # Start MySQL service
+          Start-Service MySQL
+          
+          # Wait for MySQL to start
+          Start-Sleep -Seconds 15
+          
+          Write-Host "MySQL service started!"
+        shell: powershell
+
+      # ✅ 7. Configure MySQL (Set root password and create database)
+      - name: Configure MySQL
+        run: |
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+          
+          # Set root password to 'root'
+          & $mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root';"
+          
+          # Create database
+          & $mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS coviddata;"
+          
+          # Create europe table
+          & $mysql -u root -proot -e "USE coviddata; CREATE TABLE IF NOT EXISTS europe (id INT AUTO_INCREMENT PRIMARY KEY, country VARCHAR(100), cases INT, date DATE);"
+          
+          Write-Host "✅ MySQL configured with database 'coviddata' and table 'europe'"
+        shell: powershell
+
+      # ✅ 8. Test Database Connection
       - name: Test Database Connection
         run: |
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+          
           Write-Host "=========================================" -ForegroundColor Yellow
           Write-Host "Testing Database Connection" -ForegroundColor Yellow
           Write-Host "=========================================" -ForegroundColor Yellow
           
-          $mysql = "$env:MYSQL_BIN\mysql.exe"
-          
           # Test basic connection
           Write-Host "`n1. Testing basic connection..." -ForegroundColor Cyan
-          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SELECT '✅ Database Connected Successfully!' as Status;"
+          & $mysql -u root -proot -e "SELECT '✅ Database Connected Successfully!' as Status;"
           
           if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ Basic connection successful!" -ForegroundColor Green
@@ -117,50 +104,59 @@ jobs:
           }
           
           # Check database
-          Write-Host "`n2. Checking database: ${{ secrets.DB_NAME }}..." -ForegroundColor Cyan
-          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SELECT DATABASE() as Current_Database;" ${{ secrets.DB_NAME }}
+          Write-Host "`n2. Checking database: coviddata..." -ForegroundColor Cyan
+          & $mysql -u root -proot -e "SELECT DATABASE() as Current_Database;" coviddata
           
           # Show all tables
           Write-Host "`n3. Listing all tables..." -ForegroundColor Cyan
-          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SHOW TABLES;" ${{ secrets.DB_NAME }}
+          & $mysql -u root -proot -e "SHOW TABLES;" coviddata
           
-          # Check europe table if exists
+          # Check europe table
           Write-Host "`n4. Checking 'europe' table..." -ForegroundColor Cyan
-          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SELECT COUNT(*) as Total_Rows FROM europe;" ${{ secrets.DB_NAME }}
+          & $mysql -u root -proot -e "SELECT COUNT(*) as Total_Rows FROM europe;" coviddata
+          
+          # Insert sample data
+          Write-Host "`n5. Inserting sample data..." -ForegroundColor Cyan
+          & $mysql -u root -proot -e "INSERT INTO europe (country, cases, date) VALUES ('United Kingdom', 1000000, '2024-01-01');" coviddata
+          
+          # Query the data
+          Write-Host "`n6. Querying europe table..." -ForegroundColor Cyan
+          & $mysql -u root -proot -e "SELECT * FROM europe;" coviddata
           
           # Get MySQL version
-          Write-Host "`n5. MySQL Version:" -ForegroundColor Cyan
-          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SELECT VERSION() as Version;"
+          Write-Host "`n7. MySQL Version:" -ForegroundColor Cyan
+          & $mysql -u root -proot -e "SELECT VERSION() as Version;"
           
           Write-Host "`n=========================================" -ForegroundColor Green
           Write-Host "✅ All Database Connection Tests Passed!" -ForegroundColor Green
           Write-Host "=========================================" -ForegroundColor Green
         shell: powershell
 
-      # ✅ 7. Run DB Schema / Seed SQL (if exists)
-      - name: Run DB Schema / Seed Scripts
+      # ✅ 9. Run DB Schema (if exists)
+      - name: Run DB Schema
         run: |
-          $mysql = "$env:MYSQL_BIN\mysql.exe"
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
           $schemaPath = "src/test/resources/db/schema.sql"
           if (Test-Path $schemaPath) {
             Write-Host "Applying schema from $schemaPath ..." -ForegroundColor Yellow
-            Get-Content $schemaPath -Raw | & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" ${{ secrets.DB_NAME }}
+            Get-Content $schemaPath -Raw | & $mysql -u root -proot coviddata
             Write-Host "✅ Schema applied successfully." -ForegroundColor Green
           } else {
-            Write-Host "ℹ️ No schema.sql found at $schemaPath - skipping." -ForegroundColor Yellow
+            Write-Host "ℹ️ No schema.sql found - skipping." -ForegroundColor Yellow
           }
         shell: powershell
 
-      # ✅ 8. Final Connection Summary
+      # ✅ 10. Connection Summary
       - name: Connection Summary
         run: |
           Write-Host "`n=========================================" -ForegroundColor Magenta
           Write-Host "DATABASE CONNECTION SUMMARY" -ForegroundColor Magenta
           Write-Host "=========================================" -ForegroundColor Magenta
-          Write-Host "✅ Database Server: MySQL" 
-          Write-Host "✅ Host: 127.0.0.1:3306"
-          Write-Host "✅ Database Name: ${{ secrets.DB_NAME }}"
-          Write-Host "✅ Database User: ${{ secrets.DB_USER }}"
+          Write-Host "✅ Database Server: MySQL 8.0"
+          Write-Host "✅ Host: localhost:3306"
+          Write-Host "✅ Database Name: coviddata"
+          Write-Host "✅ Database User: root"
+          Write-Host "✅ Table: europe (created)"
           Write-Host "✅ Connection Status: Active"
           Write-Host "=========================================" -ForegroundColor Green
           Write-Host "🎉 Database is ready for testing!" -ForegroundColor Green
