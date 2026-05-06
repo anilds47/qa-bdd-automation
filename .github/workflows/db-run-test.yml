@@ -1,0 +1,52 @@
+name: MySQL Connection Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    
+    steps:
+      # Start MySQL service (pre-installed on Windows runner)
+      - name: Start MySQL Service
+        run: |
+          net start MySQL80
+          Start-Sleep -Seconds 10
+        shell: powershell
+
+      # Set root password to 'root'
+      - name: Set MySQL Root Password
+        run: |
+          mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root';"
+          echo "✅ Root password set to 'root'"
+        shell: powershell
+
+      # Test connection to coviddata database
+      - name: Test Database Connection
+        run: |
+          echo "Testing connection to coviddata database..."
+          mysql -u root -proot -e "SELECT '✅ Connected to coviddata DB successfully!' as Status;" coviddata
+          
+          if ($LASTEXITCODE -eq 0) {
+            echo "✅ Connection successful!"
+          } else {
+            echo "❌ Connection failed!"
+            exit 1
+          }
+        shell: powershell
+
+      # Optional: Show tables in coviddata database
+      - name: Show Tables
+        run: |
+          echo "Tables in coviddata database:"
+          mysql -u root -proot -e "SHOW TABLES;" coviddata
+        shell: powershell
+
+      # Optional: Query europe table
+      - name: Query Europe Table
+        run: |
+          echo "Querying europe table..."
+          mysql -u root -proot -e "SELECT COUNT(*) as Total_Rows FROM europe;" coviddata
+          echo "✅ Successfully accessed coviddata.europe table!"
+        shell: powershell
