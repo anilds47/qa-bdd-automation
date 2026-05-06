@@ -5,159 +5,221 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: coviddata
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
-      # ✅ 1. Checkout PUBLIC repo
-      - name: Checkout Public Repo
-        uses: actions/checkout@v4
+      # Wait for MySQL to be ready
+      - name: Wait for MySQL
+        run: |
+          until mysqladmin ping -h127.0.0.1 -uroot -proot --silent; do
+            echo "Waiting for MySQL..."
+            sleep 5
+          done
 
-      # ✅ 2. Checkout PRIVATE repo
-      - name: Checkout Private Core Repo
-        uses: actions/checkout@v4
+      # Create europe table if not exists
+      - name: Create europe table
+        run: |
+          mysql -h127.0.0.1 -uroot -proot coviddata <<EOF
+          CREATE TABLE IF NOT EXISTS europe (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            country_name VARCHAR(100),
+            total_deaths INT,
+            total_recovered INT,
+            top_cases INT,
+            death INT,
+            population INT,
+            total_cases INT
+          );
+          EOF
+          echo "✅ Table 'europe' is ready!"
+
+      # Insert data ONLY if table is empty (checks first)
+      - name: Insert COVID data (only once)
+        run: |
+          # Check if data already exists
+          row_count=$(mysql -h127.0.0.1 -uroot -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;")
+          
+          if [ "$row_count" -eq 0 ]; then
+            echo "No data found. Inserting COVID data for the first time..."
+            mysql -h127.0.0.1 -uroot -proot coviddata <<EOF
+            INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES
+            ('Isle of Man', 116, 0, 443335, 1353, 85732, 38008),
+            ('Ireland', 9491, 1724921, 345521, 1891, 5020199, 1734582),
+            ('Iceland', 229, 0, 607731, 663, 345393, 209906),
+            ('Hungary', 49048, 2152155, 232164, 5106, 9606259, 2230232),
+            ('Greece', 37869, 0, 591412, 3671, 10316637, 6101379),
+            ('Gibraltar', 113, 0, 609720, 3353, 33704, 20550),
+            ('Germany', 183027, 38240600, 462891, 2182, 83883596, 38828995),
+            ('France', 167642, 39970918, 612013, 2556, 65584518, 40138560),
+            ('Finland', 11958, 1503989, 272930, 2153, 5554960, 1516117),
+            ('Faeroe Islands', 28, 0, 703959, 569, 49233, 34658),
+            ('Estonia', 3001, 0, 475123, 2270, 1321910, 628070),
+            ('Denmark', 8814, 3174942, 545636, 1511, 5834950, 3183756),
+            ('Czechia', 43517, 4715206, 443246, 4053, 10736784, 4759041),
+            ('Croatia', 18687, 1258432, 322650, 4604, 4059286, 1309728),
+            ('Channel Islands', 228, 101321, 576421, 1292, 176463, 101717),
+            ('Bulgaria', 38748, 1292944, 195753, 5661, 6844597, 1339851),
+            ('Bosnia and Herzegovina', 16388, 379084, 124215, 5044, 3249317, 403615),
+            ('Belgium', 34376, 4826798, 416659, 2946, 11668278, 4861695),
+            ('Belarus', 7118, 985592, 105381, 755, 9432800, 994037),
+            ('Austria', 22542, 6054934, 670727, 2486, 9066710, 6081287),
+            ('Andorra', 165, 0, 619844, 2130, 77463, 48015),
+            ('Albania', 3605, 330233, 116825, 1258, 2866374, 334863);
+            EOF
+            echo "✅ Data inserted successfully! (First time only)"
+          else
+            echo "ℹ️ Data already exists ($row_count records). Skipping insert."
+          fi
+
+      # Test Database Connection and Fetch Data
+      - name: Test Database Connection and Fetch Data
+        run: |
+          echo "========================================="
+          echo "DATABASE CONNECTION TEST"
+          echo "========================================="
+          
+          # Get record count
+          record_count=$(mysql -h127.0.0.1 -uroot -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;")
+          echo "📊 Total records in database: $record_count"
+          
+          echo ""
+          echo "========================================="
+          echo "SELECT QUERIES - FETCHING DATA"
+          echo "========================================="
+          
+          # 1. Show all data
+          echo "1. All COVID data from europe table:"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered FROM europe ORDER BY total_cases DESC;" coviddata
+          
+          # 2. Top 5 countries with highest total cases
+          echo ""
+          echo "2. Top 5 countries with highest total cases:"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases FROM europe ORDER BY total_cases DESC LIMIT 5;" coviddata
+          
+          # 3. Countries with highest death toll
+          echo ""
+          echo "3. Countries with highest death toll:"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_deaths FROM europe ORDER BY total_deaths DESC LIMIT 5;" coviddata
+          
+          # 4. Countries with highest recovery rate
+          echo ""
+          echo "4. Countries with highest recovery rate:"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_recovered FROM europe ORDER BY total_recovered DESC LIMIT 5;" coviddata
+          
+          # 5. Death percentage per country
+          echo ""
+          echo "5. Death percentage (total_deaths/total_cases * 100):"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_deaths, ROUND((total_deaths/total_cases)*100, 2) as death_percentage FROM europe WHERE total_cases > 0 ORDER BY death_percentage DESC LIMIT 10;" coviddata
+          
+          # 6. Country with maximum top_cases
+          echo ""
+          echo "6. Country with maximum top_cases:"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, top_cases FROM europe ORDER BY top_cases DESC LIMIT 1;" coviddata
+          
+          # 7. Summary statistics
+          echo ""
+          echo "7. Summary Statistics:"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT 
+            COUNT(*) as total_countries,
+            SUM(total_cases) as global_total_cases,
+            SUM(total_deaths) as global_total_deaths,
+            SUM(total_recovered) as global_total_recovered,
+            AVG(total_cases) as avg_cases_per_country,
+            MAX(total_cases) as highest_cases,
+            MIN(total_cases) as lowest_cases
+            FROM europe;" coviddata
+          
+          # 8. Countries with zero recoveries
+          echo ""
+          echo "8. Countries with zero recoveries:"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_recovered FROM europe WHERE total_recovered = 0;" coviddata
+          
+          # 9. Countries where cases > 1 million
+          echo ""
+          echo "9. Countries with more than 1 million cases:"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases FROM europe WHERE total_cases > 1000000 ORDER BY total_cases DESC;" coviddata
+          
+          # 10. Cases per population ratio
+          echo ""
+          echo "10. Cases per population ratio (percentage):"
+          echo "----------------------------------------"
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, population, total_cases, ROUND((total_cases/population)*100, 2) as cases_percentage FROM europe ORDER BY cases_percentage DESC LIMIT 10;" coviddata
+          
+          echo ""
+          echo "========================================="
+          echo "✅ All queries executed successfully!"
+          echo "========================================="
+
+      # Export data to CSV (always get latest data)
+      - name: Export data to CSV
+        run: |
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered, ROUND((total_deaths/total_cases)*100, 2) as death_pct FROM europe ORDER BY total_cases DESC;" coviddata > covid_data_$(date +%Y%m%d_%H%M%S).csv
+          echo "✅ Data exported to CSV"
+          
+          # Show first few lines
+          echo "First 5 rows of exported data:"
+          head -5 covid_data_*.csv
+
+      # Upload CSV as artifact
+      - name: Upload COVID Data CSV
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          repository: anilds47/qa-core-framework
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          path: core-framework
+          name: covid-data-export-${{ github.run_number }}
+          path: covid_data_*.csv
+          retention-days: 30
 
-      # ✅ 3. Set up JDK
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      # ✅ 4. Cache Maven dependencies
-      - name: Cache Maven packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven-
-
-      # ✅ 5. Install MySQL using Chocolatey
-      - name: Install MySQL
+      # Update data if needed (example: update recovered cases for a country)
+      - name: Update data (example)
         run: |
-          # Install chocolatey if not present
-          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          }
+          echo "Checking if update is needed..."
           
-          # Install MySQL
-          choco install mysql -y
+          # Example: Update Greece recovered cases from 0 to some value
+          mysql -h127.0.0.1 -uroot -proot -e "UPDATE europe SET total_recovered = 5000000 WHERE country_name = 'Greece' AND total_recovered = 0;" coviddata
           
-          # Install MySQL service
-          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe" --install
+          # Show updated record
+          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_recovered FROM europe WHERE country_name = 'Greece';" coviddata
           
-          Write-Host "MySQL installed successfully!"
-        shell: powershell
+          echo "✅ Data updated successfully!"
 
-      # ✅ 6. Start MySQL Service
-      - name: Start MySQL Service
-        run: |
-          # Start MySQL service
-          Start-Service MySQL
-          
-          # Wait for MySQL to start
-          Start-Sleep -Seconds 15
-          
-          Write-Host "MySQL service started!"
-        shell: powershell
-
-      # ✅ 7. Configure MySQL (Set root password and create database)
-      - name: Configure MySQL
-        run: |
-          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          
-          # Set root password to 'root'
-          & $mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root';"
-          
-          # Create database
-          & $mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS coviddata;"
-          
-          # Create europe table
-          & $mysql -u root -proot -e "USE coviddata; CREATE TABLE IF NOT EXISTS europe (id INT AUTO_INCREMENT PRIMARY KEY, country VARCHAR(100), cases INT, date DATE);"
-          
-          Write-Host "✅ MySQL configured with database 'coviddata' and table 'europe'"
-        shell: powershell
-
-      # ✅ 8. Test Database Connection
-      - name: Test Database Connection
-        run: |
-          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          
-          Write-Host "=========================================" -ForegroundColor Yellow
-          Write-Host "Testing Database Connection" -ForegroundColor Yellow
-          Write-Host "=========================================" -ForegroundColor Yellow
-          
-          # Test basic connection
-          Write-Host "`n1. Testing basic connection..." -ForegroundColor Cyan
-          & $mysql -u root -proot -e "SELECT '✅ Database Connected Successfully!' as Status;"
-          
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Basic connection successful!" -ForegroundColor Green
-          } else {
-            Write-Host "❌ Basic connection failed!" -ForegroundColor Red
-            exit 1
-          }
-          
-          # Check database
-          Write-Host "`n2. Checking database: coviddata..." -ForegroundColor Cyan
-          & $mysql -u root -proot -e "SELECT DATABASE() as Current_Database;" coviddata
-          
-          # Show all tables
-          Write-Host "`n3. Listing all tables..." -ForegroundColor Cyan
-          & $mysql -u root -proot -e "SHOW TABLES;" coviddata
-          
-          # Check europe table
-          Write-Host "`n4. Checking 'europe' table..." -ForegroundColor Cyan
-          & $mysql -u root -proot -e "SELECT COUNT(*) as Total_Rows FROM europe;" coviddata
-          
-          # Insert sample data
-          Write-Host "`n5. Inserting sample data..." -ForegroundColor Cyan
-          & $mysql -u root -proot -e "INSERT INTO europe (country, cases, date) VALUES ('United Kingdom', 1000000, '2024-01-01');" coviddata
-          
-          # Query the data
-          Write-Host "`n6. Querying europe table..." -ForegroundColor Cyan
-          & $mysql -u root -proot -e "SELECT * FROM europe;" coviddata
-          
-          # Get MySQL version
-          Write-Host "`n7. MySQL Version:" -ForegroundColor Cyan
-          & $mysql -u root -proot -e "SELECT VERSION() as Version;"
-          
-          Write-Host "`n=========================================" -ForegroundColor Green
-          Write-Host "✅ All Database Connection Tests Passed!" -ForegroundColor Green
-          Write-Host "=========================================" -ForegroundColor Green
-        shell: powershell
-
-      # ✅ 9. Run DB Schema (if exists)
-      - name: Run DB Schema
-        run: |
-          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          $schemaPath = "src/test/resources/db/schema.sql"
-          if (Test-Path $schemaPath) {
-            Write-Host "Applying schema from $schemaPath ..." -ForegroundColor Yellow
-            Get-Content $schemaPath -Raw | & $mysql -u root -proot coviddata
-            Write-Host "✅ Schema applied successfully." -ForegroundColor Green
-          } else {
-            Write-Host "ℹ️ No schema.sql found - skipping." -ForegroundColor Yellow
-          }
-        shell: powershell
-
-      # ✅ 10. Connection Summary
+      # Connection Summary
       - name: Connection Summary
         run: |
-          Write-Host "`n=========================================" -ForegroundColor Magenta
-          Write-Host "DATABASE CONNECTION SUMMARY" -ForegroundColor Magenta
-          Write-Host "=========================================" -ForegroundColor Magenta
-          Write-Host "✅ Database Server: MySQL 8.0"
-          Write-Host "✅ Host: localhost:3306"
-          Write-Host "✅ Database Name: coviddata"
-          Write-Host "✅ Database User: root"
-          Write-Host "✅ Table: europe (created)"
-          Write-Host "✅ Connection Status: Active"
-          Write-Host "=========================================" -ForegroundColor Green
-          Write-Host "🎉 Database is ready for testing!" -ForegroundColor Green
-        shell: powershell
+          record_count=$(mysql -h127.0.0.1 -uroot -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;")
+          last_update=$(mysql -h127.0.0.1 -uroot -proot -N -e "SELECT MAX(id) FROM coviddata.europe;")
+          
+          echo ""
+          echo "========================================="
+          echo "DATABASE CONNECTION SUMMARY"
+          echo "========================================="
+          echo "✅ Database Server: MySQL 8.0"
+          echo "✅ Host: localhost:3306"
+          echo "✅ Database Name: coviddata"
+          echo "✅ Table: europe"
+          echo "✅ Total Records: $record_count countries"
+          echo "✅ Last Record ID: $last_update"
+          echo "✅ Connection Status: Active"
+          echo "========================================="
+          echo "🎉 Database is ready with COVID data!"
+          echo "📊 All SELECT queries executed successfully"
+          echo "📁 CSV file uploaded as artifact"
+          echo "========================================="
