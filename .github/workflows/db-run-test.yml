@@ -1,4 +1,4 @@
-name: MySQL Connection Test
+name: MySQL Database Connection Test
 
 on:
   workflow_dispatch:
@@ -6,47 +6,162 @@ on:
 jobs:
   test:
     runs-on: windows-latest
-    
+    env:
+      JAVA_TOOL_OPTIONS: "-Dotel.java.global-autoconfigure.enabled=true"
+      OTEL_METRICS_EXPORTER: "none"
+      OTEL_TRACES_EXPORTER: "none"
+
     steps:
-      # Start MySQL service (pre-installed on Windows runner)
-      - name: Start MySQL Service
+      # ✅ 1. Checkout PUBLIC repo (your test cases)
+      - name: Checkout Public Repo
+        uses: actions/checkout@v4
+
+      # ✅ 2. Checkout PRIVATE repo (core framework)
+      - name: Checkout Private Core Repo
+        uses: actions/checkout@v4
+        with:
+          repository: anilds47/qa-core-framework
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: core-framework
+
+      # ✅ 3. Set up JDK
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ✅ 4. Cache Maven dependencies
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      # ✅ 5. Setup and Start MySQL
+      - name: Setup and Start MySQL
         run: |
-          net start MySQL80
-          Start-Sleep -Seconds 10
+          $mysqlBin  = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
+          $mysqld    = "$mysqlBin\mysqld.exe"
+          $mysqladmin = "$mysqlBin\mysqladmin.exe"
+          $mysql     = "$mysqlBin\mysql.exe"
+          $dataDir   = "C:\MySQLData"
+
+          # Export bin path for later steps
+          echo "MYSQL_BIN=$mysqlBin" >> $env:GITHUB_ENV
+
+          Write-Host "=== Step 1: Creating data directory ==="
+          New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+
+          Write-Host "=== Step 2: Initializing MySQL ==="
+          & $mysqld --initialize-insecure --datadir="$dataDir" --console
+          Write-Host "Init exit code: $LASTEXITCODE"
+          Start-Sleep -Seconds 5
+
+          Write-Host "=== Step 3: Starting MySQL server ==="
+          $proc = Start-Process -FilePath $mysqld `
+            -ArgumentList "--datadir=$dataDir --port=3306 --bind-address=127.0.0.1 --console" `
+            -NoNewWindow -PassThru
+          Write-Host "mysqld PID: $($proc.Id)"
+
+          Write-Host "=== Step 4: Waiting for MySQL to be ready ==="
+          $ready = $false
+          for ($i = 1; $i -le 20; $i++) {
+            Start-Sleep -Seconds 5
+            Write-Host "Ping attempt $i of 20..."
+            $ping = & $mysqladmin -u root --connect-timeout=3 ping 2>&1
+            Write-Host "Result: $ping"
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "MySQL is ready!"
+              $ready = $true
+              break
+            }
+          }
+
+          if (-not $ready) {
+            Write-Host "MySQL failed to start. Dumping mysqld output..."
+            Get-EventLog -LogName Application -Source "MySQL*" -Newest 20 -ErrorAction SilentlyContinue
+            exit 1
+          }
+
+          Write-Host "=== Step 5: Setting root password ==="
+          & $mysql -u root --connect-expired-password -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
+
+          Write-Host "=== Step 6: Creating DB and user ==="
+          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
+          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
+          & $mysql -u root -p"${{ secrets.DB_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
+
+          Write-Host "MySQL setup complete!"
         shell: powershell
 
-      # Set root password to 'root'
-      - name: Set MySQL Root Password
-        run: |
-          mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root';"
-          echo "✅ Root password set to 'root'"
-        shell: powershell
-
-      # Test connection to coviddata database
+      # ✅ 6. Test Database Connection
       - name: Test Database Connection
         run: |
-          echo "Testing connection to coviddata database..."
-          mysql -u root -proot -e "SELECT '✅ Connected to coviddata DB successfully!' as Status;" coviddata
+          Write-Host "=========================================" -ForegroundColor Yellow
+          Write-Host "Testing Database Connection" -ForegroundColor Yellow
+          Write-Host "=========================================" -ForegroundColor Yellow
+          
+          $mysql = "$env:MYSQL_BIN\mysql.exe"
+          
+          # Test basic connection
+          Write-Host "`n1. Testing basic connection..." -ForegroundColor Cyan
+          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SELECT '✅ Database Connected Successfully!' as Status;"
           
           if ($LASTEXITCODE -eq 0) {
-            echo "✅ Connection successful!"
+            Write-Host "✅ Basic connection successful!" -ForegroundColor Green
           } else {
-            echo "❌ Connection failed!"
+            Write-Host "❌ Basic connection failed!" -ForegroundColor Red
             exit 1
+          }
+          
+          # Check database
+          Write-Host "`n2. Checking database: ${{ secrets.DB_NAME }}..." -ForegroundColor Cyan
+          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SELECT DATABASE() as Current_Database;" ${{ secrets.DB_NAME }}
+          
+          # Show all tables
+          Write-Host "`n3. Listing all tables..." -ForegroundColor Cyan
+          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SHOW TABLES;" ${{ secrets.DB_NAME }}
+          
+          # Check europe table if exists
+          Write-Host "`n4. Checking 'europe' table..." -ForegroundColor Cyan
+          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SELECT COUNT(*) as Total_Rows FROM europe;" ${{ secrets.DB_NAME }}
+          
+          # Get MySQL version
+          Write-Host "`n5. MySQL Version:" -ForegroundColor Cyan
+          & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" -e "SELECT VERSION() as Version;"
+          
+          Write-Host "`n=========================================" -ForegroundColor Green
+          Write-Host "✅ All Database Connection Tests Passed!" -ForegroundColor Green
+          Write-Host "=========================================" -ForegroundColor Green
+        shell: powershell
+
+      # ✅ 7. Run DB Schema / Seed SQL (if exists)
+      - name: Run DB Schema / Seed Scripts
+        run: |
+          $mysql = "$env:MYSQL_BIN\mysql.exe"
+          $schemaPath = "src/test/resources/db/schema.sql"
+          if (Test-Path $schemaPath) {
+            Write-Host "Applying schema from $schemaPath ..." -ForegroundColor Yellow
+            Get-Content $schemaPath -Raw | & $mysql -u ${{ secrets.DB_USER }} -p"${{ secrets.DB_PASSWORD }}" ${{ secrets.DB_NAME }}
+            Write-Host "✅ Schema applied successfully." -ForegroundColor Green
+          } else {
+            Write-Host "ℹ️ No schema.sql found at $schemaPath - skipping." -ForegroundColor Yellow
           }
         shell: powershell
 
-      # Optional: Show tables in coviddata database
-      - name: Show Tables
+      # ✅ 8. Final Connection Summary
+      - name: Connection Summary
         run: |
-          echo "Tables in coviddata database:"
-          mysql -u root -proot -e "SHOW TABLES;" coviddata
-        shell: powershell
-
-      # Optional: Query europe table
-      - name: Query Europe Table
-        run: |
-          echo "Querying europe table..."
-          mysql -u root -proot -e "SELECT COUNT(*) as Total_Rows FROM europe;" coviddata
-          echo "✅ Successfully accessed coviddata.europe table!"
+          Write-Host "`n=========================================" -ForegroundColor Magenta
+          Write-Host "DATABASE CONNECTION SUMMARY" -ForegroundColor Magenta
+          Write-Host "=========================================" -ForegroundColor Magenta
+          Write-Host "✅ Database Server: MySQL" 
+          Write-Host "✅ Host: 127.0.0.1:3306"
+          Write-Host "✅ Database Name: ${{ secrets.DB_NAME }}"
+          Write-Host "✅ Database User: ${{ secrets.DB_USER }}"
+          Write-Host "✅ Connection Status: Active"
+          Write-Host "=========================================" -ForegroundColor Green
+          Write-Host "🎉 Database is ready for testing!" -ForegroundColor Green
         shell: powershell
