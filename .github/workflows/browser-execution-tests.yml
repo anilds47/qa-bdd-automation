@@ -30,6 +30,10 @@ on:
 jobs:
   test:
     runs-on: windows-latest
+    env:
+      JAVA_TOOL_OPTIONS: "-Dotel.java.global-autoconfigure.enabled=true"
+      OTEL_METRICS_EXPORTER: "none"
+      OTEL_TRACES_EXPORTER: "none"
 
     steps:
       # ✅ 1. Checkout PUBLIC repo (your test cases)
