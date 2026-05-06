@@ -5,31 +5,60 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: coviddata
-        ports:
-          - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+    runs-on: windows-latest
 
     steps:
-      # Wait for MySQL to be ready
-      - name: Wait for MySQL
+      # Install MySQL using Chocolatey
+      - name: Install MySQL
         run: |
-          until mysqladmin ping -h127.0.0.1 -uroot -proot --silent; do
-            echo "Waiting for MySQL..."
-            sleep 5
-          done
+          # Install chocolatey if not present
+          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          }
+          
+          # Install MySQL
+          choco install mysql -y
+          
+          # Install MySQL service
+          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe" --install
+          
+          Write-Host "MySQL installed successfully!" -ForegroundColor Green
+        shell: powershell
+
+      # Start MySQL Service
+      - name: Start MySQL Service
+        run: |
+          # Start MySQL service
+          Start-Service MySQL
+          
+          # Wait for MySQL to start
+          Start-Sleep -Seconds 15
+          
+          Write-Host "MySQL service started!" -ForegroundColor Green
+        shell: powershell
+
+      # Configure MySQL (Set root password and create database)
+      - name: Configure MySQL
+        run: |
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+          
+          # Set root password to 'root'
+          & $mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root';"
+          
+          # Create database
+          & $mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS coviddata;"
+          
+          Write-Host "✅ MySQL configured with database 'coviddata'" -ForegroundColor Green
+        shell: powershell
 
       # Create europe table if not exists
       - name: Create europe table
         run: |
-          mysql -h127.0.0.1 -uroot -proot coviddata <<EOF
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+          
+          & $mysql -u root -proot coviddata -e @"
           CREATE TABLE IF NOT EXISTS europe (
             id INT AUTO_INCREMENT PRIMARY KEY,
             country_name VARCHAR(100),
@@ -40,18 +69,22 @@ jobs:
             population INT,
             total_cases INT
           );
-          EOF
-          echo "✅ Table 'europe' is ready!"
+          "@
+          Write-Host "✅ Table 'europe' is ready!" -ForegroundColor Green
+        shell: powershell
 
       # Insert data ONLY if table is empty (checks first)
       - name: Insert COVID data (only once)
         run: |
-          # Check if data already exists
-          row_count=$(mysql -h127.0.0.1 -uroot -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;")
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
           
-          if [ "$row_count" -eq 0 ]; then
-            echo "No data found. Inserting COVID data for the first time..."
-            mysql -h127.0.0.1 -uroot -proot coviddata <<EOF
+          # Check if data already exists
+          $row_count = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;"
+          
+          if ($row_count -eq 0) {
+            Write-Host "No data found. Inserting COVID data for the first time..." -ForegroundColor Yellow
+          
+            & $mysql -u root -proot coviddata -e @"
             INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES
             ('Isle of Man', 116, 0, 443335, 1353, 85732, 38008),
             ('Ireland', 9491, 1724921, 345521, 1891, 5020199, 1734582),
@@ -75,68 +108,71 @@ jobs:
             ('Austria', 22542, 6054934, 670727, 2486, 9066710, 6081287),
             ('Andorra', 165, 0, 619844, 2130, 77463, 48015),
             ('Albania', 3605, 330233, 116825, 1258, 2866374, 334863);
-            EOF
-            echo "✅ Data inserted successfully! (First time only)"
-          else
-            echo "ℹ️ Data already exists ($row_count records). Skipping insert."
-          fi
+            "@
+            Write-Host "✅ Data inserted successfully! (First time only)" -ForegroundColor Green
+          } else {
+            Write-Host "ℹ️ Data already exists ($row_count records). Skipping insert." -ForegroundColor Yellow
+          }
+        shell: powershell
 
       # Test Database Connection and Fetch Data
       - name: Test Database Connection and Fetch Data
         run: |
-          echo "========================================="
-          echo "DATABASE CONNECTION TEST"
-          echo "========================================="
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+          
+          Write-Host "=========================================" -ForegroundColor Yellow
+          Write-Host "DATABASE CONNECTION TEST" -ForegroundColor Yellow
+          Write-Host "=========================================" -ForegroundColor Yellow
           
           # Get record count
-          record_count=$(mysql -h127.0.0.1 -uroot -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;")
-          echo "📊 Total records in database: $record_count"
+          $record_count = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;"
+          Write-Host "📊 Total records in database: $record_count" -ForegroundColor Cyan
           
-          echo ""
-          echo "========================================="
-          echo "SELECT QUERIES - FETCHING DATA"
-          echo "========================================="
+          Write-Host ""
+          Write-Host "=========================================" -ForegroundColor Yellow
+          Write-Host "SELECT QUERIES - FETCHING DATA" -ForegroundColor Yellow
+          Write-Host "=========================================" -ForegroundColor Yellow
           
           # 1. Show all data
-          echo "1. All COVID data from europe table:"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered FROM europe ORDER BY total_cases DESC;" coviddata
+          Write-Host "1. All COVID data from europe table:" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered FROM europe ORDER BY total_cases DESC;" coviddata
           
           # 2. Top 5 countries with highest total cases
-          echo ""
-          echo "2. Top 5 countries with highest total cases:"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases FROM europe ORDER BY total_cases DESC LIMIT 5;" coviddata
+          Write-Host ""
+          Write-Host "2. Top 5 countries with highest total cases:" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT country_name, total_cases FROM europe ORDER BY total_cases DESC LIMIT 5;" coviddata
           
           # 3. Countries with highest death toll
-          echo ""
-          echo "3. Countries with highest death toll:"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_deaths FROM europe ORDER BY total_deaths DESC LIMIT 5;" coviddata
+          Write-Host ""
+          Write-Host "3. Countries with highest death toll:" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT country_name, total_deaths FROM europe ORDER BY total_deaths DESC LIMIT 5;" coviddata
           
           # 4. Countries with highest recovery rate
-          echo ""
-          echo "4. Countries with highest recovery rate:"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_recovered FROM europe ORDER BY total_recovered DESC LIMIT 5;" coviddata
+          Write-Host ""
+          Write-Host "4. Countries with highest recovery rate:" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT country_name, total_recovered FROM europe ORDER BY total_recovered DESC LIMIT 5;" coviddata
           
           # 5. Death percentage per country
-          echo ""
-          echo "5. Death percentage (total_deaths/total_cases * 100):"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_deaths, ROUND((total_deaths/total_cases)*100, 2) as death_percentage FROM europe WHERE total_cases > 0 ORDER BY death_percentage DESC LIMIT 10;" coviddata
+          Write-Host ""
+          Write-Host "5. Death percentage (total_deaths/total_cases * 100):" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, ROUND((total_deaths/total_cases)*100, 2) as death_percentage FROM europe WHERE total_cases > 0 ORDER BY death_percentage DESC LIMIT 10;" coviddata
           
           # 6. Country with maximum top_cases
-          echo ""
-          echo "6. Country with maximum top_cases:"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, top_cases FROM europe ORDER BY top_cases DESC LIMIT 1;" coviddata
+          Write-Host ""
+          Write-Host "6. Country with maximum top_cases:" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT country_name, top_cases FROM europe ORDER BY top_cases DESC LIMIT 1;" coviddata
           
           # 7. Summary statistics
-          echo ""
-          echo "7. Summary Statistics:"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT 
+          Write-Host ""
+          Write-Host "7. Summary Statistics:" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT 
             COUNT(*) as total_countries,
             SUM(total_cases) as global_total_cases,
             SUM(total_deaths) as global_total_deaths,
@@ -147,37 +183,43 @@ jobs:
             FROM europe;" coviddata
           
           # 8. Countries with zero recoveries
-          echo ""
-          echo "8. Countries with zero recoveries:"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_recovered FROM europe WHERE total_recovered = 0;" coviddata
+          Write-Host ""
+          Write-Host "8. Countries with zero recoveries:" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_recovered FROM europe WHERE total_recovered = 0;" coviddata
           
           # 9. Countries where cases > 1 million
-          echo ""
-          echo "9. Countries with more than 1 million cases:"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases FROM europe WHERE total_cases > 1000000 ORDER BY total_cases DESC;" coviddata
+          Write-Host ""
+          Write-Host "9. Countries with more than 1 million cases:" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT country_name, total_cases FROM europe WHERE total_cases > 1000000 ORDER BY total_cases DESC;" coviddata
           
           # 10. Cases per population ratio
-          echo ""
-          echo "10. Cases per population ratio (percentage):"
-          echo "----------------------------------------"
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, population, total_cases, ROUND((total_cases/population)*100, 2) as cases_percentage FROM europe ORDER BY cases_percentage DESC LIMIT 10;" coviddata
+          Write-Host ""
+          Write-Host "10. Cases per population ratio (percentage):" -ForegroundColor Cyan
+          Write-Host "----------------------------------------" -ForegroundColor Gray
+          & $mysql -u root -proot -e "SELECT country_name, population, total_cases, ROUND((total_cases/population)*100, 2) as cases_percentage FROM europe ORDER BY cases_percentage DESC LIMIT 10;" coviddata
           
-          echo ""
-          echo "========================================="
-          echo "✅ All queries executed successfully!"
-          echo "========================================="
+          Write-Host ""
+          Write-Host "=========================================" -ForegroundColor Green
+          Write-Host "✅ All queries executed successfully!" -ForegroundColor Green
+          Write-Host "=========================================" -ForegroundColor Green
+        shell: powershell
 
-      # Export data to CSV (always get latest data)
+      # Export data to CSV
       - name: Export data to CSV
         run: |
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered, ROUND((total_deaths/total_cases)*100, 2) as death_pct FROM europe ORDER BY total_cases DESC;" coviddata > covid_data_$(date +%Y%m%d_%H%M%S).csv
-          echo "✅ Data exported to CSV"
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+          $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+          
+          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered, ROUND((total_deaths/total_cases)*100, 2) as death_pct FROM europe ORDER BY total_cases DESC;" coviddata > "covid_data_$timestamp.csv"
+          
+          Write-Host "✅ Data exported to covid_data_$timestamp.csv" -ForegroundColor Green
           
           # Show first few lines
-          echo "First 5 rows of exported data:"
-          head -5 covid_data_*.csv
+          Write-Host "First 5 rows of exported data:" -ForegroundColor Yellow
+          Get-Content "covid_data_$timestamp.csv" -First 5
+        shell: powershell
 
       # Upload CSV as artifact
       - name: Upload COVID Data CSV
@@ -188,38 +230,25 @@ jobs:
           path: covid_data_*.csv
           retention-days: 30
 
-      # Update data if needed (example: update recovered cases for a country)
-      - name: Update data (example)
-        run: |
-          echo "Checking if update is needed..."
-          
-          # Example: Update Greece recovered cases from 0 to some value
-          mysql -h127.0.0.1 -uroot -proot -e "UPDATE europe SET total_recovered = 5000000 WHERE country_name = 'Greece' AND total_recovered = 0;" coviddata
-          
-          # Show updated record
-          mysql -h127.0.0.1 -uroot -proot -e "SELECT country_name, total_cases, total_recovered FROM europe WHERE country_name = 'Greece';" coviddata
-          
-          echo "✅ Data updated successfully!"
-
       # Connection Summary
       - name: Connection Summary
         run: |
-          record_count=$(mysql -h127.0.0.1 -uroot -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;")
-          last_update=$(mysql -h127.0.0.1 -uroot -proot -N -e "SELECT MAX(id) FROM coviddata.europe;")
+          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+          $record_count = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;"
           
-          echo ""
-          echo "========================================="
-          echo "DATABASE CONNECTION SUMMARY"
-          echo "========================================="
-          echo "✅ Database Server: MySQL 8.0"
-          echo "✅ Host: localhost:3306"
-          echo "✅ Database Name: coviddata"
-          echo "✅ Table: europe"
-          echo "✅ Total Records: $record_count countries"
-          echo "✅ Last Record ID: $last_update"
-          echo "✅ Connection Status: Active"
-          echo "========================================="
-          echo "🎉 Database is ready with COVID data!"
-          echo "📊 All SELECT queries executed successfully"
-          echo "📁 CSV file uploaded as artifact"
-          echo "========================================="
+          Write-Host ""
+          Write-Host "=========================================" -ForegroundColor Magenta
+          Write-Host "DATABASE CONNECTION SUMMARY" -ForegroundColor Magenta
+          Write-Host "=========================================" -ForegroundColor Magenta
+          Write-Host "✅ Database Server: MySQL 8.0" -ForegroundColor Green
+          Write-Host "✅ Host: localhost:3306" -ForegroundColor Green
+          Write-Host "✅ Database Name: coviddata" -ForegroundColor Green
+          Write-Host "✅ Table: europe" -ForegroundColor Green
+          Write-Host "✅ Total Records: $record_count countries" -ForegroundColor Green
+          Write-Host "✅ Connection Status: Active" -ForegroundColor Green
+          Write-Host "=========================================" -ForegroundColor Green
+          Write-Host "🎉 Database is ready with COVID data!" -ForegroundColor Green
+          Write-Host "📊 All SELECT queries executed successfully" -ForegroundColor Green
+          Write-Host "📁 CSV file uploaded as artifact" -ForegroundColor Green
+          Write-Host "=========================================" -ForegroundColor Green
+        shell: powershell
