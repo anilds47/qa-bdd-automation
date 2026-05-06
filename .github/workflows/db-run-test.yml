@@ -58,7 +58,7 @@ jobs:
         run: |
           $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
           
-          & $mysql -u root -proot coviddata -e @"
+          $createTable = @"
           CREATE TABLE IF NOT EXISTS europe (
             id INT AUTO_INCREMENT PRIMARY KEY,
             country_name VARCHAR(100),
@@ -70,6 +70,8 @@ jobs:
             total_cases INT
           );
           "@
+          
+          & $mysql -u root -proot coviddata -e "$createTable"
           Write-Host "✅ Table 'europe' is ready!" -ForegroundColor Green
         shell: powershell
 
@@ -79,12 +81,13 @@ jobs:
           $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
           
           # Check if data already exists
-          $row_count = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;"
+          $result = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;" 2>$null
+          $row_count = [int]$result
           
           if ($row_count -eq 0) {
             Write-Host "No data found. Inserting COVID data for the first time..." -ForegroundColor Yellow
           
-            & $mysql -u root -proot coviddata -e @"
+            $insertData = @"
             INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES
             ('Isle of Man', 116, 0, 443335, 1353, 85732, 38008),
             ('Ireland', 9491, 1724921, 345521, 1891, 5020199, 1734582),
@@ -109,6 +112,8 @@ jobs:
             ('Andorra', 165, 0, 619844, 2130, 77463, 48015),
             ('Albania', 3605, 330233, 116825, 1258, 2866374, 334863);
             "@
+          
+            & $mysql -u root -proot coviddata -e "$insertData"
             Write-Host "✅ Data inserted successfully! (First time only)" -ForegroundColor Green
           } else {
             Write-Host "ℹ️ Data already exists ($row_count records). Skipping insert." -ForegroundColor Yellow
@@ -124,84 +129,69 @@ jobs:
           Write-Host "DATABASE CONNECTION TEST" -ForegroundColor Yellow
           Write-Host "=========================================" -ForegroundColor Yellow
           
-          # Get record count
-          $record_count = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;"
-          Write-Host "📊 Total records in database: $record_count" -ForegroundColor Cyan
+          # Test basic connection
+          & $mysql -u root -proot -e "SELECT '✅ Connected to coviddata DB!' as Status;" coviddata
           
-          Write-Host ""
-          Write-Host "=========================================" -ForegroundColor Yellow
+          # Get record count
+          $result = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;" 2>$null
+          $record_count = [int]$result
+          Write-Host "`n📊 Total records in database: $record_count" -ForegroundColor Cyan
+          
+          Write-Host "`n=========================================" -ForegroundColor Yellow
           Write-Host "SELECT QUERIES - FETCHING DATA" -ForegroundColor Yellow
           Write-Host "=========================================" -ForegroundColor Yellow
           
           # 1. Show all data
-          Write-Host "1. All COVID data from europe table:" -ForegroundColor Cyan
+          Write-Host "`n1. All COVID data from europe table:" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
           & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered FROM europe ORDER BY total_cases DESC;" coviddata
           
           # 2. Top 5 countries with highest total cases
-          Write-Host ""
-          Write-Host "2. Top 5 countries with highest total cases:" -ForegroundColor Cyan
+          Write-Host "`n2. Top 5 countries with highest total cases:" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
           & $mysql -u root -proot -e "SELECT country_name, total_cases FROM europe ORDER BY total_cases DESC LIMIT 5;" coviddata
           
           # 3. Countries with highest death toll
-          Write-Host ""
-          Write-Host "3. Countries with highest death toll:" -ForegroundColor Cyan
+          Write-Host "`n3. Countries with highest death toll:" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
           & $mysql -u root -proot -e "SELECT country_name, total_deaths FROM europe ORDER BY total_deaths DESC LIMIT 5;" coviddata
           
           # 4. Countries with highest recovery rate
-          Write-Host ""
-          Write-Host "4. Countries with highest recovery rate:" -ForegroundColor Cyan
+          Write-Host "`n4. Countries with highest recovery rate:" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
           & $mysql -u root -proot -e "SELECT country_name, total_recovered FROM europe ORDER BY total_recovered DESC LIMIT 5;" coviddata
           
           # 5. Death percentage per country
-          Write-Host ""
-          Write-Host "5. Death percentage (total_deaths/total_cases * 100):" -ForegroundColor Cyan
+          Write-Host "`n5. Death percentage (total_deaths/total_cases * 100):" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
           & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, ROUND((total_deaths/total_cases)*100, 2) as death_percentage FROM europe WHERE total_cases > 0 ORDER BY death_percentage DESC LIMIT 10;" coviddata
           
           # 6. Country with maximum top_cases
-          Write-Host ""
-          Write-Host "6. Country with maximum top_cases:" -ForegroundColor Cyan
+          Write-Host "`n6. Country with maximum top_cases:" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
           & $mysql -u root -proot -e "SELECT country_name, top_cases FROM europe ORDER BY top_cases DESC LIMIT 1;" coviddata
           
           # 7. Summary statistics
-          Write-Host ""
-          Write-Host "7. Summary Statistics:" -ForegroundColor Cyan
+          Write-Host "`n7. Summary Statistics:" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT 
-            COUNT(*) as total_countries,
-            SUM(total_cases) as global_total_cases,
-            SUM(total_deaths) as global_total_deaths,
-            SUM(total_recovered) as global_total_recovered,
-            AVG(total_cases) as avg_cases_per_country,
-            MAX(total_cases) as highest_cases,
-            MIN(total_cases) as lowest_cases
-            FROM europe;" coviddata
+          & $mysql -u root -proot -e "SELECT COUNT(*) as total_countries, SUM(total_cases) as global_total_cases, SUM(total_deaths) as global_total_deaths, SUM(total_recovered) as global_total_recovered, AVG(total_cases) as avg_cases_per_country, MAX(total_cases) as highest_cases, MIN(total_cases) as lowest_cases FROM europe;" coviddata
           
           # 8. Countries with zero recoveries
-          Write-Host ""
-          Write-Host "8. Countries with zero recoveries:" -ForegroundColor Cyan
+          Write-Host "`n8. Countries with zero recoveries:" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
           & $mysql -u root -proot -e "SELECT country_name, total_cases, total_recovered FROM europe WHERE total_recovered = 0;" coviddata
           
           # 9. Countries where cases > 1 million
-          Write-Host ""
-          Write-Host "9. Countries with more than 1 million cases:" -ForegroundColor Cyan
+          Write-Host "`n9. Countries with more than 1 million cases:" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
           & $mysql -u root -proot -e "SELECT country_name, total_cases FROM europe WHERE total_cases > 1000000 ORDER BY total_cases DESC;" coviddata
           
           # 10. Cases per population ratio
-          Write-Host ""
-          Write-Host "10. Cases per population ratio (percentage):" -ForegroundColor Cyan
+          Write-Host "`n10. Cases per population ratio (percentage):" -ForegroundColor Cyan
           Write-Host "----------------------------------------" -ForegroundColor Gray
           & $mysql -u root -proot -e "SELECT country_name, population, total_cases, ROUND((total_cases/population)*100, 2) as cases_percentage FROM europe ORDER BY cases_percentage DESC LIMIT 10;" coviddata
           
-          Write-Host ""
-          Write-Host "=========================================" -ForegroundColor Green
+          Write-Host "`n=========================================" -ForegroundColor Green
           Write-Host "✅ All queries executed successfully!" -ForegroundColor Green
           Write-Host "=========================================" -ForegroundColor Green
         shell: powershell
@@ -211,14 +201,11 @@ jobs:
         run: |
           $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
           $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+          $outputFile = "covid_data_$timestamp.csv"
           
-          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered, ROUND((total_deaths/total_cases)*100, 2) as death_pct FROM europe ORDER BY total_cases DESC;" coviddata > "covid_data_$timestamp.csv"
+          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered, ROUND((total_deaths/total_cases)*100, 2) as death_pct FROM europe ORDER BY total_cases DESC;" coviddata > $outputFile
           
-          Write-Host "✅ Data exported to covid_data_$timestamp.csv" -ForegroundColor Green
-          
-          # Show first few lines
-          Write-Host "First 5 rows of exported data:" -ForegroundColor Yellow
-          Get-Content "covid_data_$timestamp.csv" -First 5
+          Write-Host "✅ Data exported to $outputFile" -ForegroundColor Green
         shell: powershell
 
       # Upload CSV as artifact
@@ -234,7 +221,8 @@ jobs:
       - name: Connection Summary
         run: |
           $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          $record_count = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;"
+          $result = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;" 2>$null
+          $record_count = [int]$result
           
           Write-Host ""
           Write-Host "=========================================" -ForegroundColor Magenta
