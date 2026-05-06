@@ -1,225 +1,148 @@
-name: MySQL Database Connection Test
+name: DB Connection + Browser Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      testng_xml:
+        description: 'Enter TestNG XML file path'
+        required: true
+        default: 'testng-bdd-web.xml'
+
+      browser:
+        description: 'Browser to run tests on'
+        required: true
+        default: 'chrome'
+        type: choice
+        options:
+          - chrome
+          - firefox
+          - edge
+
+      headless:
+        description: 'Run in headless mode?'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: self-hosted
 
     steps:
-      # Install MySQL using Chocolatey
-      - name: Install MySQL
-        run: |
-          # Install chocolatey if not present
-          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          }
-          
-          # Install MySQL
-          choco install mysql -y
-          
-          # Install MySQL service
-          & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe" --install
-          
-          Write-Host "MySQL installed successfully!" -ForegroundColor Green
-        shell: powershell
+      # ✅ 1. Checkout PUBLIC repo (your test cases)
+      - name: Checkout Public Repo
+        uses: actions/checkout@v4
 
-      # Start MySQL Service
-      - name: Start MySQL Service
-        run: |
-          # Start MySQL service
-          Start-Service MySQL
-          
-          # Wait for MySQL to start
-          Start-Sleep -Seconds 15
-          
-          Write-Host "MySQL service started!" -ForegroundColor Green
-        shell: powershell
+      # ✅ 2. Checkout PRIVATE repo (core framework)
+      - name: Checkout Private Core Repo
+        uses: actions/checkout@v4
+        with:
+          repository: anilds47/qa-core-framework
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: core-framework
 
-      # Configure MySQL (Set root password and create database)
+      # ✅ 3. Set up JDK
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ✅ 4. Cache Maven dependencies
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      # ✅ 5. Verify MySQL is already running on local machine
+      - name: Verify MySQL is Running
+        run: |
+          echo "Checking MySQL connectivity..."
+          until mysqladmin ping -h 127.0.0.1 -P 3306 -u ${{ secrets.DB_USER }} -p${{ secrets.DB_PASSWORD }} --silent; do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+          echo "MySQL is ready!"
+
+      # ✅ 6. Ensure DB and User exist
       - name: Configure MySQL
         run: |
-          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          
-          # Set root password to 'root'
-          & $mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root';"
-          
-          # Create database
-          & $mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS coviddata;"
-          
-          Write-Host "✅ MySQL configured with database 'coviddata'" -ForegroundColor Green
-        shell: powershell
+          mysql -h 127.0.0.1 -P 3306 -u root -p${{ secrets.DB_ROOT_PASSWORD }} -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.DB_NAME }};"
+          mysql -h 127.0.0.1 -P 3306 -u root -p${{ secrets.DB_ROOT_PASSWORD }} -e "CREATE USER IF NOT EXISTS '${{ secrets.DB_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.DB_PASSWORD }}';"
+          mysql -h 127.0.0.1 -P 3306 -u root -p${{ secrets.DB_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON ${{ secrets.DB_NAME }}.* TO '${{ secrets.DB_USER }}'@'localhost'; FLUSH PRIVILEGES;"
+          echo "DB configured successfully."
 
-      # Create europe table if not exists
-      - name: Create europe table
+      # ✅ 7. Apply Schema if exists
+      - name: Run DB Schema / Seed Scripts
         run: |
-          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          & $mysql -u root -proot coviddata -e "CREATE TABLE IF NOT EXISTS europe (id INT AUTO_INCREMENT PRIMARY KEY, country_name VARCHAR(100), total_deaths INT, total_recovered INT, top_cases INT, death INT, population INT, total_cases INT);"
-          Write-Host "✅ Table 'europe' is ready!" -ForegroundColor Green
-        shell: powershell
+          SCHEMA_PATH="src/test/resources/db/schema.sql"
+          if [ -f "$SCHEMA_PATH" ]; then
+            echo "Applying schema from $SCHEMA_PATH ..."
+            mysql -h 127.0.0.1 -P 3306 -u ${{ secrets.DB_USER }} -p${{ secrets.DB_PASSWORD }} ${{ secrets.DB_NAME }} < $SCHEMA_PATH
+            echo "Schema applied successfully."
+          else
+            echo "No schema.sql found - skipping."
+          fi
 
-      # Insert data ONLY if table is empty (checks first)
-      - name: Insert COVID data (only once)
+      # ✅ 8. Build Core Framework
+      - name: Build Core Framework
         run: |
-          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          
-          # Check if data already exists
-          $result = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;" 2>$null
-          $row_count = [int]$result
-          
-          if ($row_count -eq 0) {
-            Write-Host "No data found. Inserting COVID data for the first time..." -ForegroundColor Yellow
-          
-            # Insert data line by line to avoid syntax issues
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Isle of Man', 116, 0, 443335, 1353, 85732, 38008);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Ireland', 9491, 1724921, 345521, 1891, 5020199, 1734582);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Iceland', 229, 0, 607731, 663, 345393, 209906);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Hungary', 49048, 2152155, 232164, 5106, 9606259, 2230232);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Greece', 37869, 0, 591412, 3671, 10316637, 6101379);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Gibraltar', 113, 0, 609720, 3353, 33704, 20550);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Germany', 183027, 38240600, 462891, 2182, 83883596, 38828995);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('France', 167642, 39970918, 612013, 2556, 65584518, 40138560);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Finland', 11958, 1503989, 272930, 2153, 5554960, 1516117);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Faeroe Islands', 28, 0, 703959, 569, 49233, 34658);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Estonia', 3001, 0, 475123, 2270, 1321910, 628070);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Denmark', 8814, 3174942, 545636, 1511, 5834950, 3183756);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Czechia', 43517, 4715206, 443246, 4053, 10736784, 4759041);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Croatia', 18687, 1258432, 322650, 4604, 4059286, 1309728);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Channel Islands', 228, 101321, 576421, 1292, 176463, 101717);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Bulgaria', 38748, 1292944, 195753, 5661, 6844597, 1339851);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Bosnia and Herzegovina', 16388, 379084, 124215, 5044, 3249317, 403615);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Belgium', 34376, 4826798, 416659, 2946, 11668278, 4861695);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Belarus', 7118, 985592, 105381, 755, 9432800, 994037);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Austria', 22542, 6054934, 670727, 2486, 9066710, 6081287);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Andorra', 165, 0, 619844, 2130, 77463, 48015);"
-            & $mysql -u root -proot coviddata -e "INSERT INTO europe (country_name, total_deaths, total_recovered, top_cases, death, population, total_cases) VALUES ('Albania', 3605, 330233, 116825, 1258, 2866374, 334863);"
-          
-            Write-Host "✅ Data inserted successfully! (First time only)" -ForegroundColor Green
-          } else {
-            Write-Host "ℹ️ Data already exists ($row_count records). Skipping insert." -ForegroundColor Yellow
-          }
-        shell: powershell
+          cd core-framework
+          mvn clean install -DskipTests
 
-      # Test Database Connection and Fetch Data
-      - name: Test Database Connection and Fetch Data
+      # ✅ 9. Install Selected Browser
+      - name: Install Chrome
+        if: ${{ inputs.browser == 'chrome' }}
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install Firefox
+        if: ${{ inputs.browser == 'firefox' }}
+        uses: browser-actions/setup-firefox@v1
+
+      - name: Install Edge
+        if: ${{ inputs.browser == 'edge' }}
+        uses: browser-actions/setup-edge@v1
+
+      # ✅ 10. Debug Inputs
+      - name: Debug Inputs
         run: |
-          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          
-          Write-Host "=========================================" -ForegroundColor Yellow
-          Write-Host "DATABASE CONNECTION TEST" -ForegroundColor Yellow
-          Write-Host "=========================================" -ForegroundColor Yellow
-          
-          # Test basic connection
-          & $mysql -u root -proot -e "SELECT '✅ Connected to coviddata DB!' as Status;" coviddata
-          
-          # Get record count
-          $result = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;" 2>$null
-          $record_count = [int]$result
-          Write-Host "`n📊 Total records in database: $record_count" -ForegroundColor Cyan
-          
-          Write-Host "`n=========================================" -ForegroundColor Yellow
-          Write-Host "SELECT QUERIES - FETCHING DATA" -ForegroundColor Yellow
-          Write-Host "=========================================" -ForegroundColor Yellow
-          
-          # 1. Show all data
-          Write-Host "`n1. All COVID data from europe table:" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered FROM europe ORDER BY total_cases DESC;" coviddata
-          
-          # 2. Top 5 countries with highest total cases
-          Write-Host "`n2. Top 5 countries with highest total cases:" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT country_name, total_cases FROM europe ORDER BY total_cases DESC LIMIT 5;" coviddata
-          
-          # 3. Countries with highest death toll
-          Write-Host "`n3. Countries with highest death toll:" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT country_name, total_deaths FROM europe ORDER BY total_deaths DESC LIMIT 5;" coviddata
-          
-          # 4. Countries with highest recovery rate
-          Write-Host "`n4. Countries with highest recovery rate:" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT country_name, total_recovered FROM europe ORDER BY total_recovered DESC LIMIT 5;" coviddata
-          
-          # 5. Death percentage per country
-          Write-Host "`n5. Death percentage (total_deaths/total_cases * 100):" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, ROUND((total_deaths/total_cases)*100, 2) as death_percentage FROM europe WHERE total_cases > 0 ORDER BY death_percentage DESC LIMIT 10;" coviddata
-          
-          # 6. Country with maximum top_cases
-          Write-Host "`n6. Country with maximum top_cases:" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT country_name, top_cases FROM europe ORDER BY top_cases DESC LIMIT 1;" coviddata
-          
-          # 7. Summary statistics
-          Write-Host "`n7. Summary Statistics:" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT COUNT(*) as total_countries, SUM(total_cases) as global_total_cases, SUM(total_deaths) as global_total_deaths, SUM(total_recovered) as global_total_recovered, AVG(total_cases) as avg_cases_per_country, MAX(total_cases) as highest_cases, MIN(total_cases) as lowest_cases FROM europe;" coviddata
-          
-          # 8. Countries with zero recoveries
-          Write-Host "`n8. Countries with zero recoveries:" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_recovered FROM europe WHERE total_recovered = 0;" coviddata
-          
-          # 9. Countries where cases > 1 million
-          Write-Host "`n9. Countries with more than 1 million cases:" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT country_name, total_cases FROM europe WHERE total_cases > 1000000 ORDER BY total_cases DESC;" coviddata
-          
-          # 10. Cases per population ratio
-          Write-Host "`n10. Cases per population ratio (percentage):" -ForegroundColor Cyan
-          Write-Host "----------------------------------------" -ForegroundColor Gray
-          & $mysql -u root -proot -e "SELECT country_name, population, total_cases, ROUND((total_cases/population)*100, 2) as cases_percentage FROM europe ORDER BY cases_percentage DESC LIMIT 10;" coviddata
-          
-          Write-Host "`n=========================================" -ForegroundColor Green
-          Write-Host "✅ All queries executed successfully!" -ForegroundColor Green
-          Write-Host "=========================================" -ForegroundColor Green
-        shell: powershell
+          echo "XML:      ${{ github.event.inputs.testng_xml }}"
+          echo "Browser:  ${{ github.event.inputs.browser }}"
+          echo "Headless: ${{ github.event.inputs.headless }}"
+          echo "XML Path: ${{ github.workspace }}/${{ github.event.inputs.testng_xml }}"
 
-      # Export data to CSV
-      - name: Export data to CSV
-        run: |
-          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-          $outputFile = "covid_data_$timestamp.csv"
-          
-          & $mysql -u root -proot -e "SELECT country_name, total_cases, total_deaths, total_recovered, ROUND((total_deaths/total_cases)*100, 2) as death_pct FROM europe ORDER BY total_cases DESC;" coviddata > $outputFile
-          
-          Write-Host "✅ Data exported to $outputFile" -ForegroundColor Green
-        shell: powershell
+      # ✅ 11. Run Tests
+      - name: Run Tests
+        run: mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} -Dbrowser=${{ inputs.browser }} -Dheadless=${{ inputs.headless }}
+        env:
+          DB_URL: jdbc:mysql://127.0.0.1:3306/${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
-      # Upload CSV as artifact
-      - name: Upload COVID Data CSV
+      # ✅ 12. Upload Extent Report artifact
+      - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: covid-data-export-${{ github.run_number }}
-          path: covid_data_*.csv
+          name: extent-report-${{ github.run_number }}
+          path: target/
           retention-days: 30
 
-      # Connection Summary
-      - name: Connection Summary
+      # ✅ 13. Post Report Link to Job Summary
+      - name: Post Report Link to Summary
+        if: always()
         run: |
-          $mysql = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-          $result = & $mysql -u root -proot -N -e "SELECT COUNT(*) FROM coviddata.europe;" 2>$null
-          $record_count = [int]$result
-          
-          Write-Host ""
-          Write-Host "=========================================" -ForegroundColor Magenta
-          Write-Host "DATABASE CONNECTION SUMMARY" -ForegroundColor Magenta
-          Write-Host "=========================================" -ForegroundColor Magenta
-          Write-Host "✅ Database Server: MySQL 8.0" -ForegroundColor Green
-          Write-Host "✅ Host: localhost:3306" -ForegroundColor Green
-          Write-Host "✅ Database Name: coviddata" -ForegroundColor Green
-          Write-Host "✅ Table: europe" -ForegroundColor Green
-          Write-Host "✅ Total Records: $record_count countries" -ForegroundColor Green
-          Write-Host "✅ Connection Status: Active" -ForegroundColor Green
-          Write-Host "=========================================" -ForegroundColor Green
-          Write-Host "🎉 Database is ready with COVID data!" -ForegroundColor Green
-          Write-Host "📊 All SELECT queries executed successfully" -ForegroundColor Green
-          Write-Host "📁 CSV file uploaded as artifact" -ForegroundColor Green
-          Write-Host "=========================================" -ForegroundColor Green
-        shell: powershell
+          echo "## 📊 Browser Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Input        | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **XML File** | \`${{ inputs.testng_xml }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Browser**  | ${{ inputs.browser }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Headless** | ${{ inputs.headless }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📥 **[Download Extent Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> $GITHUB_STEP_SUMMARY
