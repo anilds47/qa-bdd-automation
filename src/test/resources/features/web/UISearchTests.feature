@@ -7,3 +7,9 @@ Feature: UI Search Functionality
     And I enter the item name in the search box
     And I click the search button again
     Then I verify the text matches expected values
+  @web
+  Scenario: Verify search results
+    Given I navigate to the URL from test data
+    When I click on the search button
+    And I enter the item name in the search box
+    And I click the search button again
