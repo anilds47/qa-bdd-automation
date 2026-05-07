@@ -104,7 +104,17 @@ jobs:
           path: target/
           retention-days: 30
 
-      # ✅ 10. Post Report Link to Job Summary
+      # ✅ 10. Upload Failed Screenshots
+      - name: Upload Failed Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-screenshots-${{ github.run_number }}
+          path: ${{ github.workspace }}/HtmlReports/FailedScreenshots/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      # ✅ 11. Post Report Link to Job Summary
       - name: Post Report Link to Summary
         if: always()
         run: |
@@ -117,3 +127,5 @@ jobs:
           echo "| **Headless** | ${{ inputs.headless }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📥 **[Download Extent Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📸 **[Download Failed Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> $GITHUB_STEP_SUMMARY
