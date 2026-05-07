@@ -403,7 +403,7 @@ appium driver install xcuitest
 ## Start Appium Server
 
 ```bash
-appium --address 127.0.0.1 --port 4723
+appium --use-plugins=gestures
 ```
 
 ---
