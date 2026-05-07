@@ -116,7 +116,17 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
-      # ✅ 11. Post Report Link to Job Summary
+      # 11. Upload Extent Report artifact
+      - name: Upload Extent Report
+        if: always()                          # ✅ must be BEFORE uses
+        uses: actions/upload-artifact@v4
+        with:
+          name: extent-report-${{ github.run_number }}
+          path: ${{ github.workspace }}/HtmlReports/Reports    # adjust to your extent report path
+          retention-days: 30
+          if-no-files-found: ignore
+
+      # ✅ 12. Post Report Link to Job Summary
       - name: Post Report Link to Summary
         if: always()
         run: |
