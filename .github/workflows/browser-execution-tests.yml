@@ -93,7 +93,7 @@ jobs:
 
       # ✅ 8. Run Tests
       - name: Run Tests
-        run: mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} -Dbrowser=${{ inputs.browser }} -Dheadless=${{ inputs.headless }} -DjiraToken=$env:JIRA_TOKEN
+        run: mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} -Dbrowser=${{ inputs.browser }} -Dheadless=${{ inputs.headless }} -DjiraToken="${{ secrets.PRIVATE_JIRA_TOKEN }}"
 
       # ✅ 9. Upload Extent Report artifact
       - name: Upload Test Reports
