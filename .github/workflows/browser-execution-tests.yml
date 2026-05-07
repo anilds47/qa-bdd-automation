@@ -91,6 +91,7 @@ jobs:
           echo "Browser:  ${{ github.event.inputs.browser }}"
           echo "Headless: ${{ github.event.inputs.headless }}"
           echo "XML Path: ${{ github.workspace }}/${{ github.event.inputs.testng_xml }}"
+          echo "Files in workspace: ${{ github.workspace }}/${{ inputs.testng_xml }}"
 
       # ✅ 8. Run Tests
       - name: Run Tests
