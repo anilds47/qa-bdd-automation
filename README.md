@@ -1,141 +1,103 @@
-# Qa Bdd Automation Framework
+# AI QA BDD Automation Framework
 
-A comprehensive UI automation testing framework built with Selenium WebDriver, Cucumber BDD, and TestNG. This framework supports both API and UI testing with detailed reporting, screenshot capture on failures, and Jira integration.
+A scalable and enterprise-ready automation framework built using Java, Selenium WebDriver, Appium, Cucumber BDD, TestNG, REST Assured, and Maven.
 
-## Features
+This framework supports:
 
-- **BDD Testing**: Uses Cucumber for behavior-driven development with Gherkin syntax
-- **Cross-Browser Support**: Supports Chrome, Firefox, Edge, and Safari
-- **Parallel Execution**: TestNG parallel execution for faster test runs
-- **Detailed Reporting**: ExtentReports for comprehensive test reports
-- **Screenshot Capture**: Automatic screenshots on test failures
-- **Jira Integration**: Automatic ticket creation for failed tests
-- **Custom WebDriver Listener**: Enhanced logging and error handling
-- **API Testing**: REST API testing capabilities
-- **Database Comparison**: UI and database data comparison tests
-- **Mobile Testing**: Appium support for Android and iOS testing
+- UI Automation Testing
+- API Automation Testing
+- Mobile Automation Testing (Android & iOS)
+- Database Validation
+- Parallel Execution
+- Jira Integration
+- Advanced Reporting
+- MCP Server Integration
+- CI/CD Integration with GitHub Actions
 
-## Prerequisites
+---
 
-- Java 8 or higher
-- Maven 3.6+
-- Git
-- Docker (required for MCP server functionality)
+# Framework Architecture
 
-## MCP Server Setup
+This automation solution is divided into two repositories:
 
-This framework integrates with Model Context Protocol (MCP) servers for enhanced automation capabilities, including GitHub operations and Selenium WebDriver management.
+| Repository | Purpose |
+|---|---|
+| **Private Repo (`qa-automation-core`)** | Contains reusable automation engine, utilities, listeners, driver management, reporting, Jira integration, mobile utilities, and framework core |
+| **Public Repo (`qa-bdd-tests`)** | Contains feature files, runners, step definitions, test scenarios, and project-specific test implementations |
 
-### Docker Installation
+---
 
-1. **Install Docker Desktop**:
-   - Download from [https://www.docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop)
-   - Follow the installation wizard for your operating system
-   - Start Docker Desktop after installation
+# Features
 
-2. **Verify Docker Installation**:
-   ```bash
-   docker --version
-   docker run hello-world
-   ```
+## BDD Automation
+- Cucumber BDD with Gherkin syntax
+- Reusable step definitions
+- Tag-based execution
 
-### MCP Configuration
+## UI Automation
+- Selenium WebDriver support
+- Cross-browser execution
+- Page Object Model design
+- Smart waits and reusable methods
 
-The MCP servers are configured in `mcp.json` located at:
-- Windows: `%APPDATA%\github-copilot\intellij\mcp.json`
-- Linux/Mac: `~/.config/github-copilot/intellij/mcp.json`
+## Mobile Automation
+- Appium support for Android and iOS
+- Native App Testing
+- Mobile Browser Testing
+- Gesture support (Swipe, Scroll, Long Press)
 
-#### Current MCP Configuration:
+## API Automation
+- REST API validation
+- Request/Response verification
+- JSON serialization and deserialization
 
-```json
-{
-    "servers": {
-      "github": {
-        "command": "docker",
-        "args": [
-          "run",
-          "-i",
-          "--rm",
-          "-e",
-          "GITHUB_PERSONAL_ACCESS_TOKEN",
-          "-e",
-          "GITHUB_API_HOST",
-          "ghcr.io/github/github-mcp-server"
-        ],
-        "env": {
-          "GITHUB_PERSONAL_ACCESS_TOKEN": "github_pat_Token",
-          "GITHUB_API_HOST": "api.github.com"
-        }
-      },
+## Reporting
+- ExtentReports integration
+- Screenshot capture on failures
+- Execution summary generation
 
-        "selenium": {
-          "command": "npx",
-          "args": ["-y", "@angiejones/mcp-selenium@latest"]
-        },
-      "appium-mcp": {
-        "disabled": false,
-        "timeout": 60000,
-        "type": "stdio",
-        "command": "npx",
-        "args": [
-          "appium-mcp@latest"
-        ],
-        "env": {
-          "ANDROID_HOME": "C:\\Users\\anild\\AppData\\Local\\Android\\Sdk"
-        }
-      }
+## Jira Integration
+- Automatic Jira ticket creation
+- Failure logging support
 
+## Parallel Execution
+- Multi-threaded execution using TestNG
+- Faster execution time
 
-    }
-}
-```
+## Database Validation
+- UI vs Database comparison testing
+- JDBC integration
 
-#### Setup Steps:
+## MCP Server Integration
+- GitHub MCP Server
+- Selenium MCP Server
+- Appium MCP Server
 
-1. **Generate GitHub Personal Access Token**:
-   - Go to GitHub Settings → Developer settings → Personal access tokens
-   - Create a new token with `repo`, `workflow`, and `read:org` permissions
-   - Copy the token and replace `your_github_token_here` in the MCP config
+---
 
-2. **Verify MCP Server Connection**:
-   - Restart your IDE (IntelliJ IDEA with GitHub Copilot)
-   - The MCP servers should automatically start when needed
+# Technology Stack
 
-#### MCP Server Features:
+| Technology | Usage |
+|---|---|
+| Java | Core programming language |
+| Selenium WebDriver | Web automation |
+| Appium | Mobile automation |
+| Cucumber | BDD implementation |
+| TestNG | Test execution |
+| Maven | Build management |
+| REST Assured | API testing |
+| MySQL | Database validation |
+| ExtentReports | Reporting |
+| GitHub Actions | CI/CD |
+| Docker | MCP Server execution |
 
-- **GitHub Server**: Enables repository operations, pull request management, issue tracking
-- **Selenium Server**: Provides advanced browser automation capabilities and diagnostics
+---
 
-### Troubleshooting MCP Setup
+# Repository Structure
 
-- **Docker not running**: Ensure Docker Desktop is started
-- **Token expired**: Regenerate GitHub token and update `mcp.json`
-- **Permission denied**: Verify token has required scopes
-- **Server connection failed**: Check Docker network connectivity
+## Private Repository — `qa-automation-core`
 
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/anilds47/qa-bdd-automation.git
-cd ui-bdd-automation-framework
-```
-
-2. Install dependencies:
-```bash
-mvn clean install
-```
-
-3. Configure properties in `src/main/resources/ConfigFiles/config.properties`:
-   - Browser settings
-   - URLs
-   - Database connections
-   - Jira credentials
-
-## Project Structure
-
-```
-  - Private Repo
+```text
 qa-automation-core/
 ├── src/
 │   └── main/
@@ -148,16 +110,21 @@ qa-automation-core/
 │       │           ├── JiraUtility.java
 │       │           ├── ReusableMethods.java
 │       │           ├── ScreenshotUtil.java
-│       │           ├── MobileUtils.java        <-- Moved from Mobile Support
+│       │           ├── MobileUtils.java
 │       │           └── TestBaseClass.java
 │       └── resources/
 │           └── ConfigFiles/
-│               └── config.properties (Template/Global)
-├── mcp.json (Sensitive MCP Server Config)
-├── pom.xml (Builds a JAR file)
+│               └── config.properties
+├── mcp.json
+├── pom.xml
 └── README.md
+```
 
-   - Public Repo
+---
+
+## Public Repository — `qa-bdd-tests`
+
+```text
 qa-bdd-tests/
 ├── src/
 │   └── test/
@@ -173,60 +140,73 @@ qa-bdd-tests/
 │       └── resources/
 │           └── features/
 │               ├── ApiTests.feature
+│               ├── MobileTests.feature
 │               ├── UIDBComparisonTests.feature
-│               ├── UISearchTests.feature
-│               └── MobileTests.feature
+│               └── UISearchTests.feature
 ├── testng-bdd-web.xml
-├── pom.xml (Depends on qa-automation-core)
+├── pom.xml
 └── README.md
 ```
 
-## Key Setup
-   Dependency Management: In the pom.xml of this public repo, you will add your private engine:
-   
-    <dependency>
-            <groupId>com.qaautomation</groupId>
-            <artifactId>qa-core-framework</artifactId>
-            <version>1.0-SNAPSHOT</version>
-        </dependency>
-        
+---
 
-## Usage
+# Prerequisites
 
-### Running BDD Tests
+Before running the framework, install the following:
 
-Execute all BDD tests using TestNG:
+- Java 8 or higher
+- Maven 3.6+
+- Git
+- Node.js
+- Docker Desktop
+- Android SDK
+- Appium Server
+
+---
+
+# Installation
+
+## Clone Public Repository
+
 ```bash
-mvn test -DsuiteXmlFile=testng-bdd-web.xml
+git clone https://github.com/anilds47/qa-bdd-tests.git
+cd qa-bdd-tests
 ```
 
-Or run specific feature files:
+---
+
+## Install Dependencies
+
 ```bash
-mvn test -Dcucumber.options="--tags @smoke"
+mvn clean install
 ```
 
-### Running with Different Browsers
+---
 
-Set browser in config.properties or via system property:
-```bash
-mvn test -Dbrowser=chrome
-mvn test -Dbrowser=firefox
+# Maven Dependency for Public Repo
+
+Add the private core framework dependency inside the public repo `pom.xml`.
+
+```xml
+<dependency>
+    <groupId>com.qaautomation</groupId>
+    <artifactId>qa-core-framework</artifactId>
+    <version>1.0-SNAPSHOT</version>
+</dependency>
 ```
 
-### Parallel Execution
+---
 
-Tests run in parallel by default. Configure thread count in testng-bdd.xml.
+# Configuration
 
-## Configuration
-
-### config.properties
+## config.properties
 
 ```properties
 # Browser Configuration
 browser=chrome
 headless=false
 
-# URLs
+# Application URLs
 baseUrl=https://example.com
 apiBaseUrl=https://api.example.com
 
@@ -240,16 +220,148 @@ jiraUrl=https://yourcompany.atlassian.net
 jiraUsername=username
 jiraPassword=password
 jiraProjectKey=PROJ
+
+# Mobile Configuration
+MobilePlatform=Android
+MobileDeviceUDID=emulator-5554
+AppiumServerUrl=http://127.0.0.1:4723/wd/hub
+MobileDeviceName=AndroidDevice
+MobileAppPackage=com.example.app
+MobileAppActivity=.MainActivity
+MobileAutomationName=UiAutomator2
 ```
 
-## Test Execution
+---
 
-### TestNG BDD Suite
+# MCP Server Setup
 
-The `testng-bdd.xml` file configures the Cucumber test runner:
+This framework supports Model Context Protocol (MCP) servers for advanced automation support.
+
+## Docker Installation
+
+Download Docker Desktop:
+
+https://www.docker.com/products/docker-desktop
+
+Verify installation:
+
+```bash
+docker --version
+docker run hello-world
+```
+
+---
+
+# MCP Configuration
+
+## MCP File Location
+
+### Windows
+```text
+%APPDATA%\github-copilot\intellij\mcp.json
+```
+
+### Linux / macOS
+```text
+~/.config/github-copilot/intellij/mcp.json
+```
+
+---
+
+## Sample MCP Configuration
+
+```json
+{
+  "servers": {
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e",
+        "GITHUB_API_HOST",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "github_pat_token",
+        "GITHUB_API_HOST": "api.github.com"
+      }
+    },
+
+    "selenium": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@angiejones/mcp-selenium@latest"
+      ]
+    },
+
+    "appium-mcp": {
+      "disabled": false,
+      "timeout": 60000,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "appium-mcp@latest"
+      ],
+      "env": {
+        "ANDROID_HOME": "C:\\Users\\anild\\AppData\\Local\\Android\\Sdk"
+      }
+    }
+  }
+}
+```
+
+---
+
+# Running Tests
+
+## Execute All Tests
+
+```bash
+mvn test -DsuiteXmlFile=testng-bdd-web.xml
+```
+
+---
+
+## Run Smoke Tests
+
+```bash
+mvn test -Dcucumber.options="--tags @smoke"
+```
+
+---
+
+## Run Mobile Tests
+
+```bash
+mvn test -Dcucumber.options="--tags @mobile"
+```
+
+---
+
+## Execute Tests in Chrome
+
+```bash
+mvn test -Dbrowser=chrome
+```
+
+---
+
+## Execute Tests in Firefox
+
+```bash
+mvn test -Dbrowser=firefox
+```
+
+---
+
+# TestNG Parallel Execution
 
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
 <suite name="BDD Test Suite" parallel="methods" thread-count="3">
     <test name="BDD Tests">
         <classes>
@@ -259,181 +371,170 @@ The `testng-bdd.xml` file configures the Cucumber test runner:
 </suite>
 ```
 
-### Cucumber Features
+---
 
-Feature files are located in `src/test/resources/features/`:
+# Mobile Automation Setup
 
-- `ApiTests.feature`: API testing scenarios
-- `UISearchTests.feature`: UI search functionality tests
-- `UIDBComparisonTests.feature`: UI and database data comparison tests
+## Install Appium
 
-### Custom WebDriver Listener
-
-The `CustomWebDriverListener` provides:
-- Detailed logging of WebDriver actions
-- Automatic screenshot capture on failures
-- Jira ticket creation for failed tests
-- Test execution summary generation
-
-## Mobile Testing with Appium
-
-This framework now supports mobile application testing using Appium for both Android and iOS platforms.
-
-### Mobile Testing Prerequisites
-
-- **Node.js** (for Appium server)
-- **Appium Server**: Install globally via npm
-  ```bash
-  npm install -g appium
-  npm install -g appium-doctor
-  ```
-- **Android SDK** (for Android testing)
-- **Xcode** (for iOS testing on macOS)
-- **Mobile Device/Emulator**: Connected Android device or iOS simulator
-
-### Setting up Appium
-
-1. **Install Appium Server**:
-   ```bash
-   npm install -g appium
-   appium --version
-   ```
-
-2. **Install UiAutomator2 Driver** (for Android):
-   ```bash
-   appium driver install uiautomator2
-   ```
-
-3. **Install XCUITest Driver** (for iOS):
-   ```bash
-   appium driver install xcuitest
-   ```
-
-4. **Start Appium Server**:
-   ```bash
-   appium --address 127.0.0.1 --port 4723
-   ```
-
-### Mobile Device Setup
-
-#### Android Setup:
-1. **Enable Developer Options** on your Android device
-2. **Enable USB Debugging**
-3. **Connect device** via USB or start emulator
-4. **Verify device connection**:
-   ```bash
-   adb devices
-   ```
-
-#### iOS Setup (macOS only):
-1. **Install Xcode** from App Store
-2. **Start iOS Simulator** or connect physical device
-3. **Verify device**:
-   ```bash
-   xcrun simctl list devices
-   ```
-
-### Mobile Test Configuration
-
-Update `config.properties` with mobile settings:
-
-```properties
-# Mobile Configuration
-MobilePlatform=Android
-MobileDeviceUDID=emulator-5554
-AppiumServerUrl=http://127.0.0.1:4723/wd/hub
-MobileDeviceName=AndroidDevice
-MobileAppPackage=com.example.app
-MobileAppActivity=.MainActivity
-MobileAppPath=/path/to/your/app.apk
-MobileBrowser=Chrome
-MobileAutomationName=UiAutomator2
-MobileNoReset=true
-MobileNewCommandTimeout=300
-```
-
-### Running Mobile Tests
-
-Execute mobile tests using tags:
 ```bash
-mvn test -Dcucumber.options="--tags @mobile"
+npm install -g appium
+npm install -g appium-doctor
 ```
 
-Or run specific mobile scenarios:
+---
+
+## Install Android Driver
+
 ```bash
-mvn test -Dcucumber.options="--tags @mobile and @smoke"
+appium driver install uiautomator2
 ```
 
-### Mobile Step Definitions
+---
 
-Available mobile-specific steps in `MobileSteps.java`:
+## Install iOS Driver
 
-- Launch mobile app/browser
-- Tap on elements
-- Enter text in fields
-- Scroll and swipe gestures (up, down, left, right)
-- Long press actions with custom duration
-- Element verification (visibility, text content)
-- Navigation (back, refresh, URL navigation)
-- Keyboard operations (hide, show, verify state)
-- Custom wait operations
+```bash
+appium driver install xcuitest
+```
 
-### Mobile Test Features
+---
 
-The framework supports:
+## Start Appium Server
 
-- **Native App Testing**: Test mobile applications directly
-- **Mobile Web Testing**: Test websites on mobile browsers
-- **Gesture Support**: Swipe, scroll, long press, tap
-- **Cross-Platform**: Android and iOS support
-- **Device Farm Ready**: Compatible with cloud device farms
-- **Reusable Utilities**: MobileUtils class for common operations
+```bash
+appium --address 127.0.0.1 --port 4723
+```
 
-## Reporting
+---
 
-- **ExtentReports**: HTML reports in `HtmlReports/Reports/`
-- **Test Summary**: `test-summary.html` and `test-summary.txt`
-- **Screenshots**: Failed test screenshots in `HtmlReports/FailedScreenshots/`
+# Android Setup
 
-## Contributing
+1. Enable Developer Options
+2. Enable USB Debugging
+3. Connect device or emulator
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Verify device:
 
-## Best Practices
+```bash
+adb devices
+```
 
-- Use Page Object Model for UI tests
-- Implement proper waits using WebDriverWait
-- Add meaningful scenario names and descriptions
-- Use tags for test categorization (@smoke, @regression, etc.)
-- Keep step definitions reusable and maintainable
+---
 
-## Troubleshooting
+# iOS Setup
 
-### Common Issues
+1. Install Xcode
+2. Start iOS simulator
+3. Verify simulator
 
-1. **WebDriver not found**: Ensure browser drivers are in PATH or use WebDriverManager
-2. **Tests failing intermittently**: Check for proper wait implementations
-3. **Jira integration not working**: Verify Jira credentials and project permissions
-4. **Parallel execution issues**: Ensure thread-safe implementations
+```bash
+xcrun simctl list devices
+```
 
-### Debug Mode
+---
 
-Run tests in debug mode:
+# Reporting
+
+Generated reports:
+
+```text
+HtmlReports/Reports/
+HtmlReports/FailedScreenshots/
+test-summary.html
+test-summary.txt
+```
+
+---
+
+# GitHub Actions Support
+
+Supports:
+
+- Self-hosted runners
+- Parallel mobile execution
+- Dynamic device configuration
+- Emulator and real device execution
+
+---
+
+# Best Practices
+
+- Follow Page Object Model
+- Use reusable step definitions
+- Avoid hardcoded waits
+- Maintain reusable utilities
+- Use tags for categorization
+- Keep locators centralized
+
+---
+
+# Troubleshooting
+
+## Common Issues
+
+### WebDriver Not Found
+Use WebDriverManager or add browser driver to system PATH.
+
+### Appium Session Failure
+Verify Appium server is running and device is connected.
+
+### Docker Issues
+Ensure Docker Desktop is running before starting MCP servers.
+
+### Parallel Execution Issues
+Use thread-safe driver management.
+
+---
+
+# Debug Mode
+
 ```bash
 mvn test -DforkCount=0 -DreuseForks=false
 ```
 
-## License
+---
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+# Contributing
 
-## Support
+1. Fork the repository
+2. Create feature branch
+3. Commit changes
+4. Push changes
+5. Create pull request
 
-For support and questions:
-- Create an issue in the GitHub repository
-- Check the troubleshooting section
-- Review the code comments for implementation details
+---
+
+# License
+
+This project is licensed under the MIT License.
+
+---
+
+# Author
+
+## Anil D S
+
+Senior Software Test Engineer
+
+Specializations:
+- Selenium Automation
+- Appium Automation
+- API Automation
+- BDD Framework Development
+- CI/CD Integration
+- Mobile Automation
+- Test Framework Architecture
+
+GitHub:
+https://github.com/anilds47
+
+---
+
+# Support
+
+For issues and support:
+
+- Create GitHub Issues
+- Review troubleshooting section
+- Check framework documentation
