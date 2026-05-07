@@ -124,7 +124,7 @@ jobs:
           name: extent-report-${{ github.run_number }}
           path: |
             ${{ github.workspace }}/HtmlReports/Reports
-            ${{ github.workspace }}/HtmlReports/FailedScreenshots
+
           retention-days: 30
           if-no-files-found: ignore
 
