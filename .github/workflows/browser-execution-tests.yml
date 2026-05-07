@@ -102,7 +102,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: extent-report-${{ github.run_number }}
+          name: test-reports-${{ github.run_number }}
           path: target/
           retention-days: 30
 
