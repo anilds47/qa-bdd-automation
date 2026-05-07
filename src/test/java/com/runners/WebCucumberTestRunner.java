@@ -13,7 +13,7 @@ import java.io.IOException;
         glue = {"com.stepdefinitions.api", "com.stepdefinitions.mobile", "com.stepdefinitions.web"},
         plugin = {"pretty", "html:target/cucumber-reports.html"},
         monochrome = true,
-        tags = "@DB"
+        tags = "@web"
 )
 public class WebCucumberTestRunner extends AbstractTestNGCucumberTests {
     private TestBaseClass base = new TestBaseClass();
