@@ -1,4 +1,4 @@
-# AI QA BDD Automation Framework
+# Unified Test Automation Framework
 
 A scalable and enterprise-ready automation framework built using Java, Selenium WebDriver, Appium, Cucumber BDD, TestNG, REST Assured, and Maven.
 

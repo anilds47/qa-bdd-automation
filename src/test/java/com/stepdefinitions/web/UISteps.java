@@ -1,7 +1,8 @@
 package com.stepdefinitions.web;
 
-import com.locators.DBLocator;
-import com.locators.HomeLocators;
+
+import com.locators.web.DBLocator;
+import com.locators.web.HomeLocators;
 import com.pages.DbPage;
 import com.pages.HomePage;
 import com.utilities.*;

@@ -1,5 +1,6 @@
 package com.stepdefinitions.mobile;
 
+import com.pages.HomeScreenPage;
 import com.utilities.DriverFactory;
 import com.utilities.MobileUtils;
 import io.appium.java_client.AppiumBy;
@@ -22,8 +23,7 @@ public class MobileDemo  {
     }
     @When("User clicks on Views")
     public void user_clicks_on_views() {
-        WebElement views = DriverFactory.getDriver().findElement(AppiumBy.accessibilityId("Views"));
-        views.click();
+        HomeScreenPage.clickOnViewButton();
         System.out.println("Opened 'Views' section");
     }
     @When("User scrolls until Tabs is visible and clicks")
