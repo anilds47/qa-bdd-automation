@@ -1,6 +1,7 @@
 package com.testcases;
 
-import com.locators.HomeLocators;
+
+import com.locators.web.HomeLocators;
 import com.pages.HomePage;
 import com.utilities.DirectoryPaths;
 import com.utilities.ExcelUtility;

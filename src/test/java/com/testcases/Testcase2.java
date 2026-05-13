@@ -1,6 +1,7 @@
 package com.testcases;
 
-import com.locators.DBLocator;
+
+import com.locators.web.DBLocator;
 import com.pages.DbPage;
 import com.utilities.*;
 import org.testng.annotations.Test;
