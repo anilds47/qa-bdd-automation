@@ -30,19 +30,28 @@ on:
 jobs:
   test:
     runs-on: windows-latest
+
     env:
       JAVA_TOOL_OPTIONS: "-Dotel.java.global-autoconfigure.enabled=true"
       OTEL_METRICS_EXPORTER: "none"
       OTEL_TRACES_EXPORTER: "none"
+
       JIRA_TOKEN: ${{ secrets.PRIVATE_JIRA_TOKEN }}
       GITHUB_WORKSPACE: ${{ github.workspace }}
 
+      # ✅ Force GitHub Actions to use Node 24
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      # ⚠️ Temporary fallback if some actions fail
+      # ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
     steps:
-      # ✅ 1. Checkout PUBLIC repo (your test cases)
+
+      # ✅ 1. Checkout PUBLIC repo
       - name: Checkout Public Repo
         uses: actions/checkout@v4
 
-      # ✅ 2. Checkout PRIVATE repo (core framework)
+      # ✅ 2. Checkout PRIVATE repo
       - name: Checkout Private Core Repo
         uses: actions/checkout@v4
         with:
@@ -50,7 +59,7 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           path: core-framework
 
-      # ✅ 3. Set up JDK
+      # ✅ 3. Setup Java
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -61,17 +70,20 @@ jobs:
       - name: Cache Maven packages
         uses: actions/cache@v4
         with:
-          path: ~/.m2/repository
+          path: |
+            C:\Users\runneradmin\.m2\repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven-
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
       # ✅ 5. Build Core Framework
       - name: Build Core Framework
+        shell: pwsh
         run: |
           cd core-framework
           mvn clean install -DskipTests
 
-      # ✅ 6. Install Selected Browser
+      # ✅ 6. Install Browser
       - name: Install Chrome
         if: ${{ inputs.browser == 'chrome' }}
         uses: browser-actions/setup-chrome@v1
@@ -86,18 +98,20 @@ jobs:
 
       # ✅ 7. Debug Inputs
       - name: Debug Inputs
+        shell: pwsh
         run: |
-          echo "XML:      ${{ github.event.inputs.testng_xml }}"
-          echo "Browser:  ${{ github.event.inputs.browser }}"
-          echo "Headless: ${{ github.event.inputs.headless }}"
-          echo "XML Path: ${{ github.workspace }}/${{ github.event.inputs.testng_xml }}"
-          echo "Files in workspace: ${{ github.workspace }}/${{ inputs.testng_xml }}"
+          Write-Host "XML:      ${{ inputs.testng_xml }}"
+          Write-Host "Browser:  ${{ inputs.browser }}"
+          Write-Host "Headless: ${{ inputs.headless }}"
+          Write-Host "Workspace: ${{ github.workspace }}"
 
       # ✅ 8. Run Tests
       - name: Run Tests
-        run: mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} -Dbrowser=${{ inputs.browser }} -Dheadless=${{ inputs.headless }} -DjiraToken="${{ secrets.PRIVATE_JIRA_TOKEN }}"
+        shell: pwsh
+        run: |
+          mvn clean test -DsuiteXmlFile=${{ github.workspace }}/${{ inputs.testng_xml }} -Dbrowser=${{ inputs.browser }} -Dheadless=${{ inputs.headless }} -DjiraToken="${{ secrets.PRIVATE_JIRA_TOKEN }}"
 
-      # ✅ 9. Upload Extent Report artifact
+      # ✅ 9. Upload Target Reports
       - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -112,34 +126,31 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: failed-screenshots-${{ github.run_number }}
-          path: ${{ github.workspace }}/HtmlReports/FailedScreenshots/
+          path: HtmlReports/FailedScreenshots/
           retention-days: 30
           if-no-files-found: ignore
 
-      # 11. Upload Extent Report artifact
+      # ✅ 11. Upload Extent Report
       - name: Upload Extent Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: extent-report-${{ github.run_number }}
-          path: |
-            ${{ github.workspace }}/HtmlReports/Reports
-
+          path: HtmlReports/Reports/
           retention-days: 30
           if-no-files-found: ignore
 
-      # ✅ 12. Post Report Link to Job Summary
+      # ✅ 12. Add Summary
       - name: Post Report Link to Summary
         if: always()
+        shell: pwsh
         run: |
-          echo "## 📊 Browser Test Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Input        | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| **XML File** | \`${{ inputs.testng_xml }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Browser**  | ${{ inputs.browser }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Headless** | ${{ inputs.headless }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📥 **[Download Extent Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📸 **[Download Failed Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Browser Test Report" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Input | Value |" >> $env:GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $env:GITHUB_STEP_SUMMARY
+          echo "| XML File | \`${{ inputs.testng_xml }}\` |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Browser | ${{ inputs.browser }} |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Headless | ${{ inputs.headless }} |" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "📥 Download reports from workflow artifacts." >> $env:GITHUB_STEP_SUMMARY
